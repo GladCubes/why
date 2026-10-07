@@ -67,7 +67,9 @@ fn list(dir: &str, keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
 
 fn is_project_file(n: &str) -> bool {
     let compose = (n.starts_with("docker-compose") || n.starts_with("compose.")) && (n.ends_with(".yml") || n.ends_with(".yaml"));
-    (n.starts_with(".env") && !n.ends_with(".example") && !n.ends_with(".sample")) || compose
+    // backups and templates are not loaded by anything
+    let spare = [".example", ".sample", ".orig", ".old", ".save", "~"].iter().any(|s| n.ends_with(s)) || n.contains(".bak");
+    (n.starts_with(".env") && !spare) || compose
 }
 
 /// Skipped when walking down: huge or generated directories.
