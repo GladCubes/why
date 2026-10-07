@@ -12,6 +12,7 @@ USAGE
                             what sits in front of it (firewall, containers, tunnels)
   why port list             every listening port and its process
   why env <NAME>            where a variable is defined and which value it has now
+  why env <file>[:line]     the variables a file defines; or the variable a given line defines, and where else it is set
   why env list              variables defined in the project (.env, docker-compose), with where
   why env list all          the same plus the shell and system environment
   why completions <shell>   completion script for fish, bash or zsh
@@ -57,7 +58,7 @@ fn fail(msg: &str) {
 
 #[cfg(target_os = "linux")]
 mod platform {
-    pub use super::linux::env::{complete as complete_env, explain as explain_env, list_all as list_env};
+    pub use super::linux::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
     pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
 }
 

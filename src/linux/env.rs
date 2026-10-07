@@ -225,6 +225,39 @@ pub fn explain(name: &str) -> Node {
     root
 }
 
+/// `why env <arg>`: a variable name, a file (`.env`) or a file and line (`/path/.env:38`).
+pub fn explain_arg(arg: &str) -> Node {
+    let is_name = |s: &str| !s.is_empty() && !s.starts_with(|c: char| c.is_ascii_digit()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if is_name(arg) {
+        return explain(arg);
+    }
+    let (path, line) = match arg.rsplit_once(':') {
+        Some((p, l)) if l.parse::<usize>().is_ok() => (p, l.parse::<usize>().ok()),
+        _ => (arg, None),
+    };
+    let Ok(text) = fs::read_to_string(path) else {
+        return Node::new(format!("`{arg}` is neither a variable name nor a readable file")).unknown().proof("a name has only letters, digits and `_`; a file must exist");
+    };
+    let defs: Vec<(usize, String, String)> = text.lines().enumerate().filter_map(|(i, l)| parse_def(l).map(|(n, v)| (i + 1, n, v))).collect();
+    match line {
+        Some(n) => match defs.iter().find(|d| d.0 == n) {
+            Some((_, name, value)) => {
+                let mut tree = explain(name);
+                tree.children.insert(0, Node::new(format!("asked about {path}:{n}, which defines {name} = {}", show(name, value))).proof("line read from the file"));
+                tree
+            }
+            None => Node::new(format!("{path}:{n} does not define a variable")).unknown().proof(short(text.lines().nth(n - 1).unwrap_or("(no such line)").trim(), 80)),
+        },
+        None => {
+            let mut root = Node::new(format!("FILE {path}")).proof(format!("{} variables defined", defs.len()));
+            for (i, name, value) in defs {
+                root.add(Node::new(format!("line {i}: {name} = {}", show(&name, &value))).proof("read from the file"));
+            }
+            root
+        }
+    }
+}
+
 /// name → (current value if set, where it appears)
 fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     let mut m: BTreeMap<String, (Option<String>, Vec<String>)> = BTreeMap::new();
