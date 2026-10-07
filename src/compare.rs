@@ -1,5 +1,3 @@
-//! `why compare A B`: what differs between two machines (or two saved snapshots), grouped by kind.
-//! A snapshot is plain text, one `key<TAB>value` per line; keys look like `tool/node`, `env/PORT`, `port/tcp/7777`, `pkg/openssl`.
 use crate::graph::Node;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -19,7 +17,6 @@ pub fn parse(text: &str) -> Snapshot {
     text.lines().filter(|l| !l.starts_with('#')).filter_map(|l| l.split_once('\t')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
-/// A snapshot from a file, from this machine (`local`), or from another one over ssh (`why snapshot` must be installed there).
 pub fn fetch(arg: &str, local: impl Fn() -> Snapshot) -> Result<Snapshot, String> {
     if arg == "local" || arg == "." {
         return Ok(local());
@@ -30,7 +27,6 @@ pub fn fetch(arg: &str, local: impl Fn() -> Snapshot) -> Result<Snapshot, String
     if arg.starts_with('-') {
         return Err(format!("`{arg}` is not a file or a host"));
     }
-    // something that looks like a path is a missing file, not a host name: no point asking ssh
     if arg.contains('/') || arg.contains('\\') {
         return Err(format!("{arg}: no such file"));
     }
@@ -69,7 +65,6 @@ pub fn compare(a: &Snapshot, an: &str, b: &Snapshot, bn: &str) -> Node {
         let mine: Vec<&&String> = keys.iter().filter(|k| k.split('/').next() == Some(prefix)).collect();
         let (mut g, mut same) = (Node::new(title.to_string()), 0);
         let max = if prefix == "pkg" { 25 } else { 40 };
-        // (priority, line): a value that differs on both sides matters more than something present on one side only
         let mut lines: Vec<(u8, String)> = vec![];
         for k in mine {
             let name = k.split_once('/').map(|x| x.1).unwrap_or(k);

@@ -1,4 +1,3 @@
-//! The process model shared by every platform; each platform fills it in from its own source (/proc, WMI).
 use std::path::PathBuf;
 
 #[derive(Clone)]
@@ -10,7 +9,6 @@ pub struct Proc {
     pub cwd: Option<PathBuf>,
     pub exe: Option<PathBuf>,
     pub user: String,
-    /// seconds since the epoch
     pub started: Option<u64>,
 }
 
@@ -19,7 +17,6 @@ pub use crate::linux::process::{all, ancestors, children, read};
 #[cfg(windows)]
 pub use crate::windows::process::{all, ancestors, children, read};
 
-/// Name without `.exe`, lowercase: how tools are matched on every platform.
 pub fn norm(name: &str) -> String {
     name.to_ascii_lowercase().trim_end_matches(".exe").to_string()
 }

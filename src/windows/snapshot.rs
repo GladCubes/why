@@ -1,4 +1,3 @@
-//! A picture of this Windows machine to compare with another.
 use super::cmd_port::listeners;
 use super::ps::{ps, rows};
 use crate::compare::Snapshot;
@@ -6,7 +5,6 @@ use crate::proc;
 use crate::util::{on_path, run};
 use std::process::Command;
 
-/// Tools such as npm are `.cmd` files: run them through cmd.exe.
 fn both(tool: &str, args: &[&str]) -> Option<String> {
     let o = Command::new("cmd.exe").arg("/C").arg(tool).args(args).output().ok()?;
     o.status.success().then(|| format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))

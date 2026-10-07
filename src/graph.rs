@@ -1,13 +1,9 @@
-//! The chain of explanations: every node says what it is, how I know (proof) and how sure I am.
 use std::io::IsTerminal;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Certainty {
-    /// read directly from the system
     Certain,
-    /// derived from a text match: probable, not proven
     Probable,
-    /// I could not verify it
     Unknown,
 }
 
@@ -40,7 +36,6 @@ impl Node {
     }
 }
 
-/// Prints the tree. It writes through one buffer so a closed pipe (`why ... | head`) does not panic.
 pub fn print(root: &Node) {
     use std::io::Write;
     let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();

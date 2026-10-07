@@ -1,4 +1,3 @@
-//! `why service <name>` on Windows: state, how it starts, what it depends on, what runs it.
 use super::cmd_port::listeners;
 use super::ps::{ps, q, rows};
 use crate::graph::Node;
@@ -65,7 +64,6 @@ pub fn complete() -> String {
     ps("Get-Service | % { $_.Name }").unwrap_or_default().lines().map(|l| format!("{}\n", l.trim())).filter(|l| l.trim().len() > 0).collect()
 }
 
-/// `why service list`
 pub fn list() -> String {
     let mut out = format!("{:<34} {:<10} {:<10} {}\n", "SERVICE", "STATE", "START", "DISPLAY NAME");
     for r in rows(&ps(r#"Get-CimInstance Win32_Service | sort Name | % { "{0}`t{1}`t{2}`t{3}" -f $_.Name,$_.State,$_.StartMode,$_.DisplayName }"#).unwrap_or_default()).iter().filter(|r| r.len() >= 4) {

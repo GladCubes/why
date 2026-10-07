@@ -1,4 +1,3 @@
-//! Who listens where: the /proc/net/* socket tables and /proc/<pid>/fd (whose socket it is).
 use std::collections::HashMap;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -17,7 +16,6 @@ const TABLES: [(&str, &str, &str); 4] = [
     ("/proc/net/udp6", "udp", "07"),
 ];
 
-/// Listening sockets, all of them or only those on `only`.
 pub fn listeners(only: Option<u16>) -> Vec<Listener> {
     let mut out = vec![];
     for (path, proto, state) in TABLES {
@@ -54,7 +52,6 @@ fn parse_ip(hex: &str) -> Option<String> {
     }
 }
 
-/// The listening sockets a process holds (readable only for your own processes, or as root).
 pub fn of_pid(pid: u32) -> Vec<Listener> {
     let Ok(fds) = fs::read_dir(format!("/proc/{pid}/fd")) else { return vec![] };
     let inodes: Vec<u64> = fds
@@ -67,7 +64,6 @@ pub fn of_pid(pid: u32) -> Vec<Listener> {
     listeners(None).into_iter().filter(|l| inodes.contains(&l.inode)).collect()
 }
 
-/// For each inode, the processes that hold that socket open. The second value counts processes I could not read.
 pub fn owners(inodes: &[u64]) -> (HashMap<u64, Vec<u32>>, usize) {
     let mut map: HashMap<u64, Vec<u32>> = HashMap::new();
     let mut unreadable = 0;

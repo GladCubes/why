@@ -1,5 +1,3 @@
-//! Shell completion scripts. They call back `why __complete <kind>` to get the live names.
-
 pub fn script(shell: &str) -> Option<&'static str> {
     Some(match shell {
         "fish" => FISH,
@@ -70,10 +68,8 @@ _why "$@"
 mod tests {
     use super::*;
 
-    /// The files shipped in packages (`completions/`) must match what `why completions` prints.
     #[test]
     fn packaged_files_match() {
-        // compared without carriage returns: a Windows checkout may convert line endings
         let same = |shell: &str, file: &str| script(shell).map(|s| s.replace('\r', "")) == Some(file.replace('\r', ""));
         assert!(same("bash", include_str!("../completions/why.bash")));
         assert!(same("fish", include_str!("../completions/why.fish")));

@@ -1,11 +1,9 @@
-//! A process as seen from /proc: command, directory, user, who started it and which service/container manages it.
 use crate::util::user_name;
 use std::fs;
 use std::path::PathBuf;
 
 pub use crate::proc::Proc;
 
-/// Seconds since the epoch at which the system booted.
 fn boot_time() -> Option<u64> {
     fs::read_to_string("/proc/stat").ok()?.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
 }
@@ -21,7 +19,6 @@ pub fn read(pid: u32) -> Option<Proc> {
         .ok()
         .and_then(|s| s.lines().find(|l| l.starts_with("Uid:"))?.split_whitespace().nth(1)?.parse().ok())
         .unwrap_or(0);
-    // field 22 of stat: start time in clock ticks since boot (100 per second on every mainstream Linux)
     let started = stat[close + 2..].split_whitespace().nth(19).and_then(|s| s.parse::<u64>().ok()).and_then(|ticks| Some(boot_time()? + ticks / 100));
     Some(Proc {
         pid,
@@ -35,7 +32,6 @@ pub fn read(pid: u32) -> Option<Proc> {
     })
 }
 
-/// Parent chain, nearest first, up to init (at most 8 steps).
 pub fn ancestors(pid: u32) -> Vec<Proc> {
     let mut out = vec![];
     let mut cur = read(pid).map(|p| p.ppid).unwrap_or(0);
@@ -47,12 +43,10 @@ pub fn ancestors(pid: u32) -> Vec<Proc> {
     out
 }
 
-/// Direct children of `pid`.
 pub fn children(pid: u32) -> Vec<Proc> {
     all().into_iter().filter(|p| p.ppid == pid).collect()
 }
 
-/// Every process that can be read.
 pub fn all() -> Vec<Proc> {
     let Ok(rd) = fs::read_dir("/proc") else { return vec![] };
     rd.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).filter_map(read).collect()
@@ -66,11 +60,9 @@ pub enum Origin {
     None,
 }
 
-/// Which systemd service or container manages it, read from the cgroup (v2 `0::/path`, or v1 `N:name=systemd:/path`).
 pub fn origin(pid: u32) -> Origin {
     let Ok(text) = fs::read_to_string(format!("/proc/{pid}/cgroup")) else { return Origin::None };
     let paths: Vec<&str> = text.lines().filter_map(|l| l.splitn(3, ':').nth(2)).collect();
-    // a container shows up in any hierarchy; a service in the systemd one
     let first = paths.iter().map(|p| classify(p)).find(|o| matches!(o, Origin::Container { .. }));
     first.or_else(|| paths.iter().map(|p| classify(p)).find(|o| *o != Origin::None)).unwrap_or(Origin::None)
 }
@@ -78,7 +70,6 @@ pub fn origin(pid: u32) -> Origin {
 fn classify(path: &str) -> Origin {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     for s in parts.iter().rev() {
-        // LXC and Incus name the payload cgroup after the container
         for (prefix, runtime) in [("lxc.payload.", "lxc"), ("incus.payload.", "incus")] {
             if let Some(name) = s.strip_prefix(prefix) {
                 return Origin::Container { runtime, id: name.to_string() };
@@ -90,7 +81,6 @@ fn classify(path: &str) -> Origin {
             }
         }
     }
-    // cgroup v1 layouts: /docker/<64 hex>, /kubepods/.../<64 hex>
     if let Some(id) = parts.iter().rev().find(|s| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())) {
         let runtime = if parts.first() == Some(&"docker") { "docker" } else { "container" };
         return Origin::Container { runtime, id: id.to_string() };

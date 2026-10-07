@@ -1,4 +1,3 @@
-//! `why file <path>`: where a file comes from and what uses it: package, owner, who has it open or loaded, which units and cron jobs name it.
 use super::{pkg, process};
 use crate::graph::Node;
 use crate::util::{ago, date, group_name, now, short, user_name};
@@ -50,7 +49,6 @@ fn kind(m: &fs::Metadata) -> &'static str {
     if t.is_symlink() { "symbolic link" } else if t.is_dir() { "directory" } else if t.is_socket() { "socket" } else if t.is_fifo() { "named pipe" } else if t.is_block_device() || t.is_char_device() { "device" } else if m.mode() & 0o111 != 0 { "executable file" } else { "regular file" }
 }
 
-/// A file that was deleted but a process still holds open (the classic "disk is full but I deleted it").
 fn deleted_but_open(path: &Path) -> Option<Node> {
     let want = format!("{} (deleted)", path.display());
     let holders: Vec<String> = process::all()
@@ -94,7 +92,6 @@ fn owner_node(real: &Path, m: &fs::Metadata) -> Node {
     }
 }
 
-/// Who runs it, has it open, or has it loaded as a library.
 fn users_nodes(real: &Path) -> Vec<Node> {
     let target = real.to_string_lossy().into_owned();
     let (mut running, mut open, mut mapped): (Vec<String>, Vec<String>, Vec<String>) = (vec![], vec![], vec![]);
@@ -128,7 +125,6 @@ fn users_nodes(real: &Path) -> Vec<Node> {
     out
 }
 
-/// Units and cron jobs that name the file.
 fn references(real: &Path) -> Vec<Node> {
     let needle = real.to_string_lossy().into_owned();
     let mut n = Node::new("named by");
@@ -158,7 +154,6 @@ fn references(real: &Path) -> Vec<Node> {
     if n.children.is_empty() { vec![] } else { vec![n] }
 }
 
-/// Completion is the shell's own file completion.
 pub fn complete() -> String {
     String::new()
 }

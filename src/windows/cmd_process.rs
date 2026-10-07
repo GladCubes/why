@@ -1,4 +1,3 @@
-//! `why process <pid|name>` on Windows.
 use super::cmd_port::listeners;
 use super::describe;
 use crate::graph::Node;
@@ -11,7 +10,6 @@ fn find(arg: &str) -> Vec<Proc> {
         return super::process::read(pid).into_iter().collect();
     }
     let want = proc::norm(Path::new(arg).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_str());
-    // not ourselves, and not the PowerShell helpers we started to ask
     let all = proc::all();
     let me = std::process::id();
     let ours = |mut pid: u32| {
@@ -87,7 +85,6 @@ pub fn complete() -> String {
     v.iter().map(|n| format!("{n}\n")).collect()
 }
 
-/// `why process list`
 pub fn list() -> String {
     let mut all = proc::all();
     all.sort_by_key(|p| p.pid);

@@ -1,4 +1,3 @@
-//! `why port N`: who listens, how it was started, which configuration names the port and what sits in front of it.
 use super::process::{self, Proc};
 use super::{describe, sockets};
 use crate::{kubernetes, tunnel};
@@ -13,7 +12,6 @@ pub fn explain(port: u16, proto: Option<&str>) -> Node {
     }
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
     let (owners, unreadable) = if ls.is_empty() { Default::default() } else { sockets::owners(&inodes) };
-    // one node per process (not per socket: the same program often listens on IPv4 and IPv6)
     let mut by_pid: Vec<(u32, Vec<&sockets::Listener>)> = vec![];
     for l in &ls {
         match owners.get(&l.inode) {
@@ -35,7 +33,6 @@ pub fn explain(port: u16, proto: Option<&str>) -> Node {
     root
 }
 
-/// `why port list`: every listening port and who holds it.
 pub fn list(proto: Option<&str>) -> String {
     let mut ls: Vec<_> = sockets::listeners(None).into_iter().filter(|l| proto.is_none_or(|p| l.proto == p)).collect();
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
@@ -52,7 +49,6 @@ pub fn list(proto: Option<&str>) -> String {
     out
 }
 
-/// Names for shell completion: `port\tprocess`.
 pub fn complete() -> String {
     let ls = sockets::listeners(None);
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
@@ -71,7 +67,6 @@ fn process_node(p: &Proc, port: u16, socks: &[&sockets::Listener]) -> Node {
     n
 }
 
-/// What sits in front: nft rules, ports published by containers, tunnels and forwards.
 fn front_node(port: u16, proto: Option<&str>) -> Node {
     let mut n = Node::new("network in front of the process");
     let p = port.to_string();
@@ -80,7 +75,6 @@ fn front_node(port: u16, proto: Option<&str>) -> Node {
     for (tool, args) in [("nft", &["list", "ruleset"][..]), ("iptables-save", &[][..]), ("ip6tables-save", &[][..])] {
         let Some(rules) = run(tool, args) else { continue };
         any_firewall = true;
-        // with a protocol given, drop rules that name the other one
         let other = match proto { Some("tcp") => "udp", Some("udp") => "tcp", _ => "" };
         let hits: Vec<&str> = rules.lines().map(str::trim).filter(|l| l.contains("port") && has_token(l, &p) && (other.is_empty() || !has_word(l, other))).take(6).collect();
         for h in &hits {
@@ -106,7 +100,6 @@ fn front_node(port: u16, proto: Option<&str>) -> Node {
     n
 }
 
-/// `word` as a whole word in a rule line (`udp` in `-p udp`, not in `udplite`).
 fn has_word(line: &str, word: &str) -> bool {
     line.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == word)
 }

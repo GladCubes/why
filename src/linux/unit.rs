@@ -1,4 +1,3 @@
-//! systemd unit files: where they are, what they launch and which drop-ins change them.
 use crate::util::home;
 use std::fs;
 use std::path::PathBuf;
@@ -13,7 +12,6 @@ fn dirs(user: bool) -> Vec<PathBuf> {
     }
 }
 
-/// The unit file and its drop-ins, in reading order.
 pub fn files(name: &str, user: bool) -> Vec<PathBuf> {
     let template = name.find('@').map(|i| format!("{}@.service", &name[..i]));
     let mut out = vec![];
@@ -33,7 +31,6 @@ pub fn files(name: &str, user: bool) -> Vec<PathBuf> {
     out
 }
 
-/// The lines that say what starts and with which environment.
 pub fn key_lines(path: &PathBuf) -> Vec<String> {
     let Ok(text) = fs::read_to_string(path) else { return vec![] };
     const KEYS: [&str; 5] = ["ExecStart=", "WorkingDirectory=", "EnvironmentFile=", "Environment=", "User="];

@@ -1,11 +1,9 @@
-//! A picture of this machine to compare with another: tools, environment, ports, services, containers, packages.
 use super::{pkg, sockets};
 use crate::compare::Snapshot;
 use crate::util::run;
 use std::fs;
 use std::process::Command;
 
-/// stdout and stderr of a successful command (java and nginx print their version on stderr).
 fn both(cmd: &str, args: &[&str]) -> Option<String> {
     let o = Command::new(cmd).args(args).env("LC_ALL", "C").output().ok()?;
     o.status.success().then(|| format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)))

@@ -1,4 +1,3 @@
-//! `why service <name>`: why a systemd service is (or is not) running: state, how it is enabled, who wants it, what it runs.
 use super::{describe, process, unit};
 use crate::graph::Node;
 use crate::util::{run, short};
@@ -37,7 +36,6 @@ pub fn explain(arg: &str) -> Node {
     if let Some(d) = m.get("Description").filter(|d| !d.is_empty()) {
         root.add(Node::new(format!("description: {d}")).proof("unit file"));
     }
-    // why it exists at boot
     let enabled = m.get("UnitFileState").map(String::as_str).unwrap_or("");
     let mut e = Node::new(format!("unit file state: {}", if enabled.is_empty() { "n/a" } else { enabled })).proof("systemctl show");
     for w in words(&m, "WantedBy").into_iter().chain(words(&m, "RequiredBy")) {
@@ -51,7 +49,6 @@ pub fn explain(arg: &str) -> Node {
     if !trig.is_empty() {
         root.add(Node::new(format!("started on demand by: {}", trig.join(", "))).proof("TriggeredBy (socket or timer activation)"));
     }
-    // what dependents want it right now
     if let Some(rev) = run("systemctl", &["list-dependencies", "--reverse", "--plain", "--no-pager", "--no-legend", &name]) {
         let deps: Vec<&str> = rev.lines().map(str::trim).filter(|l| !l.is_empty() && *l != name).take(8).collect();
         if !deps.is_empty() {
@@ -86,12 +83,10 @@ pub fn explain(arg: &str) -> Node {
     root
 }
 
-/// Names for shell completion.
 pub fn complete() -> String {
     run("systemctl", &["list-unit-files", "--type=service", "--no-legend", "--no-pager"]).unwrap_or_default().lines().filter_map(|l| l.split_whitespace().next()).map(|n| format!("{}\n", n.trim_end_matches(".service"))).collect()
 }
 
-/// `why service list`: every loaded service with its state and whether it starts at boot.
 pub fn list() -> String {
     if !std::path::Path::new("/run/systemd/system").exists() {
         return "this system does not run systemd\n".into();

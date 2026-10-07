@@ -1,4 +1,3 @@
-//! A package as a dependency of the project in the current directory (npm, cargo, pip, dotnet): shared by every platform.
 use crate::graph::Node;
 use crate::util::{on_path, run, short};
 use std::fs;
@@ -8,7 +7,6 @@ fn field(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|l| l.strip_prefix(key)?.trim_start().strip_prefix(':').map(|v| v.trim().to_string()))
 }
 
-/// The package as a dependency of the project in the current directory (npm, cargo, pip, dotnet).
 pub fn project(root: &mut Node, name: &str) -> bool {
     let mut found = false;
     let mut add = |tool: &str, out: Option<String>, proof: &str| {

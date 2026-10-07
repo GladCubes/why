@@ -1,4 +1,3 @@
-//! `why port N` on Windows: who listens (netstat), what runs it, and what sits in front (firewall rules, portproxy, tunnels).
 use super::describe;
 use super::process;
 use super::ps::{ps, rows};
@@ -14,12 +13,10 @@ pub struct Listener {
     pub pid: u32,
 }
 
-/// `netstat -ano` on any Windows language: TCP lines whose remote side is the all-zero address are listeners; UDP lines have no state.
 pub fn parse_netstat(text: &str) -> Vec<Listener> {
     let mut out = vec![];
     for l in text.lines() {
         let f: Vec<&str> = l.split_whitespace().collect();
-        // the state column can be several words in other languages ("IN ASCOLTO"), so the pid is simply the last column
         let (proto, local, pid) = match (f.first().map(|s| s.to_ascii_uppercase()).as_deref(), f.len()) {
             (Some("TCP"), n) if n >= 5 && f[2].ends_with(":0") && (f[2].starts_with("0.0.0.0") || f[2].starts_with("[::]")) => ("tcp", f[1], f[n - 1]),
             (Some("UDP"), 4) => ("udp", f[1], f[3]),
@@ -76,7 +73,6 @@ fn process_node(p: &Proc, port: u16, socks: &[&Listener]) -> Node {
     n
 }
 
-/// `why port list`
 pub fn list(proto: Option<&str>) -> String {
     let mut ls = listeners(None, proto);
     ls.sort_by(|a, b| (a.port, a.proto, &a.addr).cmp(&(b.port, b.proto, &b.addr)));
@@ -95,7 +91,6 @@ pub fn complete() -> String {
     v.iter().map(|(p, n)| format!("{p}\t{n}\n")).collect()
 }
 
-/// `netsh interface portproxy show all`: rows `listen addr, listen port, connect addr, connect port`.
 pub fn parse_portproxy(text: &str) -> Vec<[String; 4]> {
     text.lines()
         .filter_map(|l| {

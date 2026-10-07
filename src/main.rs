@@ -1,4 +1,3 @@
-//! why: why is this port open, where does this variable come from? Every step comes with its proof.
 mod compare;
 mod completions;
 mod env;
@@ -70,7 +69,6 @@ fn main() {
         ["service", x] if is_list(x) => emit(&platform::list_service()),
         ["package"] => emit(&platform::list_package()),
         ["package", x] if is_list(x) => emit(&platform::list_package()),
-        // an unquoted name with spaces (`why file C:\Program Files\x.exe`) is one name
         ["process", rest @ ..] => graph::print(&platform::explain_process(&rest.join(" "))),
         ["file", rest @ ..] => graph::print(&platform::explain_file(&rest.join(" "))),
         ["snapshot"] => emit(&compare::serialize(&platform::snapshot())),
@@ -97,7 +95,6 @@ fn proto_of(s: &str) -> Option<&'static str> {
     }
 }
 
-/// `7777`, `udp 7777`, `7777/udp`, `udp/7777`, `tcp:7777`, `:7777` -> (protocol, port)
 fn parse_port(args: &[&str]) -> Result<(Option<&'static str>, u16), String> {
     let (mut proto, mut port) = (None, None);
     for tok in args.iter().flat_map(|a| a.split(['/', ':', ' '])).filter(|t| !t.is_empty()) {
@@ -110,7 +107,6 @@ fn parse_port(args: &[&str]) -> Result<(Option<&'static str>, u16), String> {
     port.map(|p| (proto, p)).ok_or_else(|| "usage: why port <N> (or `why port list`)".to_string())
 }
 
-/// Prints through one write so a closed pipe (`why process list | head`) ends quietly instead of panicking.
 fn emit(s: &str) {
     use std::io::Write;
     let _ = std::io::stdout().write_all(s.as_bytes());

@@ -1,4 +1,3 @@
-//! `why env NAME`: where a variable is defined (shell files, system, .env, compose) and which value it has now.
 use crate::proc as process;
 use crate::graph::Node;
 use crate::util::{home, short};
@@ -6,7 +5,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// `(name, value)` if the line defines a variable (shell, fish, systemd, .env, yaml).
 pub fn parse_def(line: &str) -> Option<(String, String)> {
     let mut l = line.trim();
     if l.starts_with('#') {
@@ -24,12 +22,10 @@ pub fn parse_def(line: &str) -> Option<(String, String)> {
     if name.is_empty() || name.starts_with(|c: char| c.is_ascii_digit()) {
         return None;
     }
-    // NAME=value (shell, .env, systemd), NAME: value (yaml, fish_variables), NAME value (fish)
     let v = rest.trim_start().strip_prefix('=').or_else(|| rest.strip_prefix(':')).or_else(|| rest.strip_prefix(' '))?;
     Some((name.to_string(), v.trim().trim_matches(|c| c == '"' || c == '\'').to_string()))
 }
 
-/// Who probably loads this definition: running programs working in the file's directory and systemd units that point at it.
 fn consumers(file: &Path, name: &str, value: &str) -> Vec<Node> {
     let Some(dir) = file.parent().filter(|d| *d != Path::new("/")) else { return vec![] };
     let mut out: Vec<Node> = vec![];
@@ -56,7 +52,6 @@ fn consumers(file: &Path, name: &str, value: &str) -> Vec<Node> {
     out
 }
 
-/// `${NAME}` in a compose file points at another variable instead of giving a value.
 fn is_ref(v: &str) -> bool {
     v.contains("${") || v.starts_with('$')
 }
@@ -66,7 +61,6 @@ fn secret(name: &str) -> bool {
     ["KEY", "TOKEN", "SECRET", "PASS", "PWD", "AUTH", "SALT", "PRIVATE", "CRED", "SIGN"].iter().any(|k| n.contains(k))
 }
 
-/// For a file the user pointed at, any variable name can appear, so values that look like credentials are hidden too.
 fn show_file(name: &str, v: &str) -> String {
     let url_or_path = v.contains("://") || v.starts_with('/') || v.starts_with('.') || v.chars().nth(1) == Some(':');
     let credential_like = v.chars().count() >= 12 && v.chars().any(|c| c.is_ascii_digit()) && v.chars().any(|c| c.is_ascii_uppercase()) && v.chars().any(|c| !c.is_ascii_alphanumeric() && c != ' ');
@@ -76,7 +70,6 @@ fn show_file(name: &str, v: &str) -> String {
     show(name, v)
 }
 
-/// A value that can be compared across machines without leaking it: secrets become a short hash of themselves.
 pub fn comparable(name: &str, v: &str) -> String {
     if !secret(name) {
         return v.to_string();
@@ -85,7 +78,6 @@ pub fn comparable(name: &str, v: &str) -> String {
     format!("(secret, fingerprint {:08x})", h >> 32)
 }
 
-/// Sensitive values never reach the screen: two characters and the length; in URLs only the password is hidden.
 pub fn show(name: &str, v: &str) -> String {
     if secret(name) && !v.is_empty() {
         return format!("{}… ({} characters, hidden)", v.chars().take(2).collect::<String>(), v.chars().count());
@@ -98,15 +90,12 @@ pub fn show(name: &str, v: &str) -> String {
     short(v, 100)
 }
 
-
 fn is_project_file(n: &str) -> bool {
     let compose = (n.starts_with("docker-compose") || n.starts_with("compose.")) && (n.ends_with(".yml") || n.ends_with(".yaml"));
-    // backups and templates are not loaded by anything
     let spare = [".example", ".sample", ".orig", ".old", ".save", ".bak", "~"].iter().any(|s| n.contains(s));
     (n.starts_with(".env") || compose) && !spare
 }
 
-/// Skipped when walking down: huge or generated directories.
 const SKIP: [&str; 12] = ["node_modules", ".git", "target", "venv", ".venv", "__pycache__", "AppData", "$Recycle.Bin", "Windows", "Program Files", "Program Files (x86)", "WinSxS"];
 
 fn scan_dir(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
@@ -120,7 +109,6 @@ fn scan_dir(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// .env and compose files: in the current directory and two levels below it, then in every directory above it up to home.
 fn project_files() -> Vec<PathBuf> {
     let mut out = vec![];
     let Ok(mut dir) = std::env::current_dir() else { return out };
@@ -132,14 +120,11 @@ fn project_files() -> Vec<PathBuf> {
     out
 }
 
-/// Lowercase names that really are environment variables (the rest of lowercase keys in YAML is noise).
 const PROXY: [&str; 5] = ["http_proxy", "https_proxy", "no_proxy", "ftp_proxy", "all_proxy"];
 const SHELL_NOTE: &str = "read when the shell starts or at login";
 const SERVICE_NOTE: &str = "read by systemd for that service, not by the shell";
 const PROJECT_NOTE: &str = "NOT read by the shell: only applies to programs that load it (dotenv, docker compose, ...)";
 
-/// Everywhere on the machine a project or a service may keep variables: the usual roots, the directories of running
-/// processes, and the systemd units (with the EnvironmentFile= they point to).
 fn wide_files() -> Vec<(&'static str, PathBuf)> {
     let mut proj = vec![];
     let roots = crate::platform::wide_roots();
@@ -154,7 +139,6 @@ fn wide_files() -> Vec<(&'static str, PathBuf)> {
     out
 }
 
-/// True when nothing near you defines the variable(s): the search then widens to the whole machine.
 fn needs_wide(name: Option<&str>) -> bool {
     definitions(name, false).iter().all(|d| d.note == SHELL_NOTE)
 }
@@ -179,7 +163,6 @@ struct Def {
     value: String,
 }
 
-/// Every definition found in the known files (only `name` if given).
 fn definitions(name: Option<&str>, wide: bool) -> Vec<Def> {
     let mut out = vec![];
     for (note, file) in sources(wide) {
@@ -187,7 +170,6 @@ fn definitions(name: Option<&str>, wide: bool) -> Vec<Def> {
             let Ok(text) = fs::read_to_string(&file) else { continue };
             for (i, l) in text.lines().enumerate() {
                 let Some((n, value)) = parse_def(l) else { continue };
-                // when listing, only names that look like environment variables (the rest is YAML noise)
                 let keep = match name {
                     Some(w) => if cfg!(windows) { n.eq_ignore_ascii_case(w) } else { n == w },
                     None => n.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') || PROXY.contains(&n.as_str()),
@@ -243,7 +225,6 @@ pub fn explain(name: &str) -> Node {
     root
 }
 
-/// `why env <arg>`: a variable name, a file (`.env`) or a file and line (`/path/.env:38`).
 pub fn explain_arg(arg: &str) -> Node {
     let is_name = |s: &str| !s.is_empty() && !s.starts_with(|c: char| c.is_ascii_digit()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
     if is_name(arg) {
@@ -279,7 +260,6 @@ pub fn explain_arg(arg: &str) -> Node {
     }
 }
 
-/// name → (current value if set, where it appears)
 fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     let mut m: BTreeMap<String, (Option<String>, Vec<String>)> = BTreeMap::new();
     for (k, v) in std::env::vars().filter(|(k, _)| !k.starts_with('=')) {
@@ -294,7 +274,6 @@ fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     m
 }
 
-/// `why env list`: the variables defined in project files (.env, compose); with `all`, also the shell and the system.
 pub fn list_all(all: bool) -> String {
     if !all {
         return list_project();
@@ -343,7 +322,6 @@ fn list_project() -> String {
     out
 }
 
-/// Names for shell completion: the project's variables if there are any, otherwise everything.
 pub fn complete() -> String {
     let project = project_names(needs_wide(None));
     if !project.is_empty() {

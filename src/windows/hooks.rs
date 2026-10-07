@@ -1,4 +1,3 @@
-//! Windows specifics for `why env`: PowerShell profiles, directories to search, and the registry layers (user and machine).
 use super::ps::{ps, q, rows};
 use crate::graph::Node;
 use crate::util::{home, short};
@@ -24,7 +23,6 @@ pub fn service_env_files() -> Vec<PathBuf> {
     vec![]
 }
 
-/// Windows services whose command line points into the file's folder.
 pub fn service_consumers(dir: &Path, _file: &Path) -> Vec<Node> {
     let d = dir.to_string_lossy().into_owned();
     let out = ps(&format!(r#"$d={}; Get-CimInstance Win32_Service | ? {{ $_.PathName -like "*$d*" }} | % {{ "svc`t$($_.Name)`t$($_.State)`t$($_.PathName)" }}"#, q(&d))).unwrap_or_default();
@@ -35,7 +33,6 @@ pub fn environ_value(_pid: u32, _name: &str) -> Option<String> {
     None
 }
 
-/// The two persistent layers Windows builds every process's environment from.
 pub fn extra_env(name: &str) -> Vec<Node> {
     let n = q(name);
     let out = ps(&format!(r#"$u=[Environment]::GetEnvironmentVariable({n},'User'); $m=[Environment]::GetEnvironmentVariable({n},'Machine'); if($u -ne $null){{ "user`t$u" }}; if($m -ne $null){{ "machine`t$m" }}"#)).unwrap_or_default();
@@ -43,7 +40,6 @@ pub fn extra_env(name: &str) -> Vec<Node> {
     let mut g = Node::new("Windows environment (registry)").proof("a process starts with the machine values, then the user values on top (PATH is joined)");
     for r in rows(&out).iter().filter(|r| r.len() >= 2) {
         let (key, label) = if r[0] == "user" { (r"HKCU\Environment", "user") } else { (r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "machine") };
-        // PATH-like variables are joined from both layers: the current value just has to contain each part
         let joined = name.eq_ignore_ascii_case("path") || name.eq_ignore_ascii_case("pathext") || name.eq_ignore_ascii_case("psmodulepath");
         let same = current.as_deref() == Some(r[1].as_str()) || (joined && current.as_deref().is_some_and(|c| c.to_lowercase().contains(&r[1].trim_end_matches(';').to_lowercase())));
         let mut x = Node::new(format!("{label} value = {}{}", crate::env::show(name, &r[1]), if same { if joined { "   ← included in the current value" } else { "   ← same as the current environment" } } else { "" })).proof(key);

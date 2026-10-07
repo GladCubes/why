@@ -1,4 +1,3 @@
-//! Running PowerShell (present on every supported Windows) and reading its tab-separated output.
 use std::process::Command;
 
 #[cfg(windows)]
@@ -16,29 +15,25 @@ fn b64(bytes: &[u8]) -> String {
     out
 }
 
-/// Runs a script and returns what it printed. Errors inside the script are silenced: a missing cmdlet means fewer lines, not a crash.
 pub fn ps(script: &str) -> Option<String> {
     let full = format!("$ErrorActionPreference='SilentlyContinue';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.Encoding]::UTF8;{script}");
     let utf16: Vec<u8> = full.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut c = Command::new("powershell.exe");
     c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", &b64(&utf16)]);
     #[cfg(windows)]
-    c.creation_flags(0x0800_0000); // no console window
+    c.creation_flags(0x0800_0000);
     let o = c.output().ok()?;
     Some(String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
-/// A PowerShell single-quoted literal (quotes doubled), safe to put in a script.
 pub fn q(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// Lines split on tabs, empty lines dropped.
 pub fn rows(out: &str) -> Vec<Vec<String>> {
     out.lines().map(|l| l.trim_end_matches('\r')).filter(|l| !l.trim().is_empty()).map(|l| l.split('\t').map(|c| c.trim().to_string()).collect()).collect()
 }
 
-/// A Windows command line split into arguments (double quotes group, no escapes handled beyond that).
 pub fn split_cmd(cmd: &str) -> Vec<String> {
     let (mut out, mut cur, mut quoted) = (vec![], String::new(), false);
     for ch in cmd.chars() {

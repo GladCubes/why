@@ -1,4 +1,3 @@
-//! Kubernetes: Services that expose a port (needs `kubectl` with access to a cluster; silent otherwise).
 use crate::graph::Node;
 use crate::util::{has_token, run};
 

@@ -1,4 +1,3 @@
-//! `why package <name>`: why a package is installed (who asked for it, who needs it, when) and, inside a project, why it is a dependency.
 use super::pkg::{self, Manager};
 use crate::util::on_path;
 use crate::graph::Node;
@@ -96,7 +95,6 @@ fn dpkg(root: &mut Node, name: &str) -> bool {
     true
 }
 
-/// The apt history entry that installed the package: when, with which command, asked by whom.
 fn apt_history(name: &str) -> Option<Node> {
     let log = fs::read_to_string("/var/log/apt/history.log").ok()?;
     let block = log.split("\n\n").find(|b| b.lines().any(|l| l.starts_with("Install:") && l.split(|c: char| c == ',' || c == ' ').any(|w| w.split(':').next() == Some(name))))?;
@@ -134,7 +132,6 @@ fn apk(root: &mut Node, name: &str) -> bool {
     true
 }
 
-/// Names for shell completion: installed packages.
 pub fn complete() -> String {
     pkg::installed().into_iter().map(|(n, _)| format!("{n}\n")).collect()
 }
@@ -153,7 +150,6 @@ mod tests {
     }
 }
 
-/// `why package list`: every installed package with its version.
 pub fn list() -> String {
     let mut v = pkg::installed();
     v.sort();

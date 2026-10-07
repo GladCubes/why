@@ -1,4 +1,3 @@
-//! Building blocks shared by `why port`, `why process` and `why service` on Windows.
 use super::process::{autostart, services_of};
 use super::ps::{ps, q, rows};
 use crate::graph::Node;
@@ -31,7 +30,6 @@ pub fn details(p: &Proc, port: Option<u16>) -> Vec<Node> {
     out
 }
 
-/// Programs that forward ports to something else: say so instead of pretending they are the real server.
 fn relay_note(p: &Proc) -> Option<Node> {
     let msg = match proc::norm(&p.name).as_str() {
         "wslrelay" | "wslhost" | "wslservice" => "WSL forwards the localhost ports of Linux distros through this process: the real listener is inside WSL (run `wsl why port N` there)",
@@ -100,7 +98,6 @@ pub fn autostart_nodes(p: &Proc) -> Vec<Node> {
     vec![n]
 }
 
-/// Authenticode signature and version info of an executable (who published it).
 pub fn identity(path: &str) -> Vec<Node> {
     let out = ps(&format!(r#"$f=Get-Item -LiteralPath {p}; $v=$f.VersionInfo; $s=Get-AuthenticodeSignature -LiteralPath {p}; "sig`t$($s.Status)`t$($s.SignerCertificate.Subject)"; "ver`t$($v.CompanyName)`t$($v.ProductName)`t$($v.FileVersion)`t$($v.FileDescription)""#, p = q(path))).unwrap_or_default();
     let mut v = vec![];
@@ -124,7 +121,6 @@ pub fn identity(path: &str) -> Vec<Node> {
     v
 }
 
-/// Config files that may hold the port: files in the arguments, config-like files next to the executable, %ProgramData%\<name>.
 fn candidates(p: &Proc) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = vec![];
     for a in &p.cmdline {
@@ -140,7 +136,6 @@ fn candidates(p: &Proc) -> Vec<PathBuf> {
     if let Some(pd) = std::env::var_os("ProgramData") {
         dirs.push(PathBuf::from(pd).join(&stem));
     }
-    // never scan the Windows directory wholesale: thousands of unrelated files
     dirs.retain(|d| !d.to_string_lossy().to_lowercase().starts_with("c:\\windows"));
     for d in dirs {
         for e in fs::read_dir(d).into_iter().flatten().flatten().take(300) {

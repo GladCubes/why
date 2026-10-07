@@ -1,4 +1,3 @@
-//! Processes on Windows, from WMI (Win32_Process) through one PowerShell call, cached for the run.
 use super::ps::{ps, q, rows, split_cmd};
 use crate::proc::Proc;
 use std::path::PathBuf;
@@ -30,7 +29,6 @@ pub fn all() -> Vec<Proc> {
     CACHE.get_or_init(load).clone()
 }
 
-/// One process, with its owner filled in (an extra WMI call).
 pub fn read(pid: u32) -> Option<Proc> {
     let mut p = all().into_iter().find(|p| p.pid == pid)?;
     p.user = ps(&format!("$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; $o=Invoke-CimMethod -InputObject $p -MethodName GetOwner; if($o.User){{ \"$($o.Domain)\\$($o.User)\" }}")).unwrap_or_default().trim().to_string();
@@ -40,7 +38,6 @@ pub fn read(pid: u32) -> Option<Proc> {
     Some(p)
 }
 
-/// Parent chain, nearest first (at most 8 steps).
 pub fn ancestors(pid: u32) -> Vec<Proc> {
     let all = all();
     let mut out = vec![];
@@ -57,12 +54,10 @@ pub fn children(pid: u32) -> Vec<Proc> {
     all().into_iter().filter(|p| p.ppid == pid && p.pid != pid).collect()
 }
 
-/// Services hosted by a process (`svchost.exe` hosts many): `(name, display name, start mode, state, account, path)`.
 pub fn services_of(pid: u32) -> Vec<Vec<String>> {
     rows(&ps(&format!(r#"Get-CimInstance Win32_Service -Filter 'ProcessId={pid}' | % {{ "{{0}}`t{{1}}`t{{2}}`t{{3}}`t{{4}}`t{{5}}" -f $_.Name,$_.DisplayName,$_.StartMode,$_.State,$_.StartName,$_.PathName }}"#)).unwrap_or_default())
 }
 
-/// Where a program is started from at boot or login: Run keys, scheduled tasks, Startup folders. Rows: `(kind, where, detail)`.
 pub fn autostart(exe: &str) -> Vec<Vec<String>> {
     let leaf = exe.rsplit(['\\', '/']).next().unwrap_or(exe);
     let script = format!(r#"$leaf={}

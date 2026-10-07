@@ -1,4 +1,3 @@
-//! Building blocks shared by `why port` and `why process`: command, who started it, which service or container runs it.
 use super::process::{self, Origin, Proc};
 use super::unit;
 use crate::graph::Node;
@@ -6,7 +5,6 @@ use crate::util::{grep_token, has_token, run, short};
 use std::fs;
 use std::path::PathBuf;
 
-/// Everything worth saying about a process; `port` adds the search for configuration that names it.
 pub fn details(p: &Proc, port: Option<u16>) -> Vec<Node> {
     let mut out = vec![];
     let cmd = p.cmdline.join(" ");
@@ -67,7 +65,6 @@ pub fn origin_nodes(p: &Proc, port: Option<u16>) -> Vec<Node> {
                 let node = n.add(Node::new(format!("file: {}", f.display())).proof("systemd directories"));
                 for l in unit::key_lines(&f) {
                     node.add(Node::new(short(&l, 140)));
-                    // if the unit launches a script, the port is often written there
                     let script = l.strip_prefix("ExecStart=").and_then(|c| c.trim_start_matches(['-', '@', '+', '!', ':']).split_whitespace().next().map(PathBuf::from));
                     if let (Some(port), Some(s)) = (port, script.filter(|s| s.is_file())) {
                         for (i, t) in grep_token(&s, &port.to_string(), 3) {
@@ -106,7 +103,6 @@ pub fn origin_nodes(p: &Proc, port: Option<u16>) -> Vec<Node> {
     }
 }
 
-/// Files that may contain the port: arguments that are files, config files in the working directory, /etc/<name>.
 fn candidates(p: &Proc) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = vec![];
     let base = p.cwd.clone().unwrap_or_default();
@@ -155,7 +151,6 @@ fn config_node(p: &Proc, port: u16) -> Node {
     n
 }
 
-/// docker-proxy and Incus/LXD forkproxy forward a port to a container: find which one.
 fn proxy_target(p: &Proc) -> Option<Node> {
     if matches!(p.name.as_str(), "incusd" | "lxd") {
         return forkproxy_target(p);
@@ -181,7 +176,6 @@ fn proxy_target(p: &Proc) -> Option<Node> {
     Some(n)
 }
 
-/// Incus/LXD proxy device: `forkproxy -- <pid> <fd> <listen addr> <pid> <fd> <connect addr> ...`; the second pid is inside the container.
 fn forkproxy_target(p: &Proc) -> Option<Node> {
     let args = &p.cmdline[p.cmdline.iter().position(|a| a == "forkproxy")? + 1..];
     let args: Vec<&String> = args.iter().skip_while(|a| a.as_str() == "--").collect();

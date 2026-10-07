@@ -1,11 +1,9 @@
-//! `why process <pid|name>`: why a process exists: what it runs, since when, who started it, what manages it, what it listens on.
 use super::process::{self, Proc};
 use super::{describe, pkg, sockets};
 use crate::graph::Node;
 use crate::util::{ago, date, now, short};
 use std::path::Path;
 
-/// Processes matching a pid or a name (command name, executable name or first word of the command line).
 fn find(arg: &str) -> Vec<Proc> {
     if let Ok(pid) = arg.parse::<u32>() {
         return process::read(pid).into_iter().collect();
@@ -77,7 +75,6 @@ fn tree(p: &Proc) -> Node {
     n
 }
 
-/// Names for shell completion.
 pub fn complete() -> String {
     let mut v: Vec<String> = process::all().into_iter().map(|p| p.name).collect();
     v.sort();
@@ -85,7 +82,6 @@ pub fn complete() -> String {
     v.iter().map(|n| format!("{n}\n")).collect()
 }
 
-/// `why process list`: every readable process with its pid.
 pub fn list() -> String {
     let mut all = process::all();
     all.sort_by_key(|p| p.pid);

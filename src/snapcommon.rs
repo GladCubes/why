@@ -1,4 +1,3 @@
-//! Parts of a snapshot that are the same on every platform: the tool list and the environment.
 use crate::compare::Snapshot;
 
 pub const TOOLS: &[(&str, &[&str])] = &[
@@ -11,12 +10,9 @@ pub const TOOLS: &[(&str, &[&str])] = &[
     ("pwsh", &["--version"]), ("winget", &["--version"]), ("choco", &["--version"]), ("wsl", &["--version"]),
 ];
 
-/// Variables that differ on every login and say nothing about the machine.
 pub const NOISE: &[&str] = &["_", "PWD", "OLDPWD", "SHLVL", "TERM", "COLORTERM", "LS_COLORS", "SSH_TTY", "SSH_CLIENT", "SSH_CONNECTION", "DISPLAY", "WINDOWID", "SESSIONNAME", "LOGONSERVER"];
 pub const NOISE_PREFIX: &[&str] = &["INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "SYSTEMD_EXEC_PID", "MEMORY_PRESSURE", "GIO_", "GJS_", "PRESSURE_VESSEL", "QT_", "GDK_", "EGL_", "ELECTRON", "MCP_", "DESKTOP_SESSION", "SSH_AUTH", "XDG_SESSION", "DBUS_", "KITTY_", "WAYLAND_", "TMUX", "LC_", "CLAUDE", "ANTHROPIC", "AI_AGENT", "BAGGAGE", "SENTRY", "VSCODE", "TERM_", "GNOME_", "LIBVA", "NO_AT_BRIDGE", "MOTD", "WT_", "PSMODULEPATH", "CLAUDE_", "VSCODE_"];
 
-
-/// Environment variables worth comparing (secrets become fingerprints, session noise is dropped).
 pub fn env_items(s: &mut Snapshot) {
     for (k, v) in std::env::vars() {
         let up = k.to_ascii_uppercase();

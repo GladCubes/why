@@ -1,4 +1,3 @@
-//! Linux specifics for `why env`: shell startup files, directories to search, systemd units.
 use crate::graph::Node;
 use crate::util::home;
 use std::fs;
@@ -25,14 +24,12 @@ pub fn shell_files() -> Vec<PathBuf> {
     f
 }
 
-/// Directories where projects and services usually live.
 pub fn wide_roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = ["/opt", "/srv", "/var/www", "/root"].map(PathBuf::from).to_vec();
     roots.extend(fs::read_dir("/home").into_iter().flatten().flatten().map(|e| e.path()));
     roots
 }
 
-/// systemd units and the `EnvironmentFile=` they point to.
 pub fn service_env_files() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = vec![];
     for e in fs::read_dir("/etc/systemd/system").into_iter().flatten().flatten() {
@@ -56,7 +53,6 @@ pub fn service_env_files() -> Vec<PathBuf> {
     out
 }
 
-/// systemd units that start from the file's directory or load the file.
 pub fn service_consumers(dir: &Path, file: &Path) -> Vec<Node> {
     let mut out: Vec<Node> = vec![];
     for e in fs::read_dir("/etc/systemd/system").into_iter().flatten().flatten() {
@@ -76,14 +72,12 @@ pub fn service_consumers(dir: &Path, file: &Path) -> Vec<Node> {
     out
 }
 
-/// The value `name` has in the environment a process was started with (None if unreadable or not there).
 pub fn environ_value(pid: u32, name: &str) -> Option<String> {
     let raw = fs::read(format!("/proc/{pid}/environ")).ok()?;
     let key = format!("{name}=");
     raw.split(|b| *b == 0).find_map(|e| String::from_utf8_lossy(e).strip_prefix(&key).map(String::from))
 }
 
-/// Linux has no registry layers: nothing beyond the files.
 pub fn extra_env(_name: &str) -> Vec<Node> {
     vec![]
 }

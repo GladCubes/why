@@ -1,10 +1,7 @@
-//! Small shared helpers: finding a number in a file, running commands, user names.
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-/// `needle` as a whole number (not glued to digits, letters or dots: no "80" inside "1.80" or "8080").
-/// The one exception is a leading "port" (`-port7777`), which is the normal way to write it.
 pub fn has_token(line: &str, needle: &str) -> bool {
     let b = line.as_bytes();
     let low = line.to_ascii_lowercase();
@@ -14,7 +11,6 @@ pub fn has_token(line: &str, needle: &str) -> bool {
     })
 }
 
-/// Lines (number, shortened text) of a text file that contain the number as a whole word.
 pub fn grep_token(path: &Path, needle: &str, max: usize) -> Vec<(usize, String)> {
     match fs::metadata(path) {
         Ok(m) if m.is_file() && m.len() < 1_000_000 => {}
@@ -33,14 +29,11 @@ pub fn short(s: &str, n: usize) -> String {
     if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n).collect::<String>()) }
 }
 
-/// Runs a command and returns its output if it succeeded (None if it is missing or fails).
 pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
-    // fixed locale: the tools' output is parsed, and a translated one ("Versione", "Motivo...") would not match
     let o = Command::new(cmd).args(args).env("LC_ALL", "C").env("LANGUAGE", "C").output().ok()?;
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
-/// Is `bin` an executable on the PATH (with the usual Windows extensions)?
 pub fn on_path(bin: &str) -> bool {
     let exts: &[&str] = if cfg!(windows) { &["", ".exe", ".cmd", ".bat", ".com"] } else { &[""] };
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| exts.iter().any(|e| d.join(format!("{bin}{e}")).is_file())))
@@ -66,7 +59,6 @@ pub fn group_name(gid: u32) -> String {
         .unwrap_or_else(|| gid.to_string())
 }
 
-/// "3 days 4 h", "12 min", "40 s"
 pub fn ago(secs: u64) -> String {
     match secs {
         0..=89 => format!("{secs} s"),
@@ -76,10 +68,8 @@ pub fn ago(secs: u64) -> String {
     }
 }
 
-/// UTC date and time like "2026-10-07 14:30" from epoch seconds (no time zone database needed).
 pub fn date(epoch: u64) -> String {
     let (days, rem) = (epoch / 86400, epoch % 86400);
-    // civil-from-days (Howard Hinnant)
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

@@ -1,4 +1,3 @@
-//! Tunnels and forwards that may carry a port: ssh -L/-R/-D, cloudflared, ngrok & co, tailscale, WireGuard.
 use crate::proc as process;
 use crate::graph::Node;
 use crate::util::{has_token, home, run, short};
@@ -6,7 +5,6 @@ use std::fs;
 
 const OTHERS: [&str; 7] = ["ngrok", "frpc", "frps", "chisel", "bore", "rathole", "zrok"];
 
-/// WireGuard interface named by a firewall rule: nft `iifname "wg0"` or iptables `-i wg0`.
 #[cfg(target_os = "linux")]
 pub fn wireguard_in(rule: &str) -> Option<String> {
     let name = match rule.split("iifname ").nth(1) {
@@ -60,7 +58,6 @@ pub fn explain(port: u16, via_wg: &[String]) -> Node {
     n
 }
 
-/// Adds the node unless an identical one is already there (several processes can report the same tunnel).
 fn add_unique(n: &mut Node, c: Node) {
     if !n.children.iter().any(|x| x.label == c.label) {
         n.add(c);
