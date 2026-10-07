@@ -253,6 +253,9 @@ pub fn explain_arg(arg: &str) -> Node {
         Some((p, l)) if l.parse::<usize>().is_ok() => (p, l.parse::<usize>().ok()),
         _ => (arg, None),
     };
+    if Path::new(path).is_dir() {
+        return Node::new(format!("`{arg}` is a directory")).unknown().proof("point `why env` at a .env or compose file, or use `why env list` to search");
+    }
     let Ok(text) = fs::read_to_string(path) else {
         return Node::new(format!("`{arg}` is neither a variable name nor a readable file")).unknown().proof("a name has only letters, digits and `_`; a file must exist");
     };

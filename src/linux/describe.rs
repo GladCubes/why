@@ -16,7 +16,9 @@ pub fn details(p: &Proc, port: Option<u16>) -> Vec<Node> {
             c.add(Node::new(format!("port {port} appears in the command")).probable());
         }
     }
-    out.push(c);
+    if !cmd.is_empty() {
+        out.push(c);
+    }
     if let Some(cwd) = &p.cwd {
         out.push(Node::new(format!("working directory: {}", cwd.display())).proof(format!("/proc/{}/cwd", p.pid)));
     }
@@ -30,6 +32,9 @@ pub fn details(p: &Proc, port: Option<u16>) -> Vec<Node> {
 }
 
 pub fn started_by(p: &Proc) -> Node {
+    if p.ppid == 0 {
+        return Node::new("started by: the kernel itself (parent pid 0)").proof("/proc/<pid>/stat");
+    }
     let chain = process::ancestors(p.pid);
     if chain.is_empty() {
         return Node::new("started by: not readable").unknown();
@@ -37,7 +42,8 @@ pub fn started_by(p: &Proc) -> Node {
     let text = chain.iter().map(|a| format!("{} ({})", a.name, a.pid)).collect::<Vec<_>>().join(" ← ");
     let mut n = Node::new(format!("started by: {text}")).proof("parent chain in /proc/<pid>/stat");
     if chain[0].pid <= 1 || chain[0].name == "systemd" {
-        n.add(Node::new("the parent is systemd: the program detached from its terminal (daemon, `-f`, `&`) or systemd/an app started it").probable());
+        let init = if chain[0].name == "systemd" { "systemd" } else { "init (pid 1)" };
+        n.add(Node::new(format!("the parent is {init}: the program detached from its terminal (daemon, `-f`, `&`) or {init} started it")).probable());
     }
     if chain.iter().any(|a| a.name.starts_with("tmux") || a.name.starts_with("screen")) {
         n.add(Node::new("inside a tmux/screen session: closing the session stops it").probable());
@@ -46,13 +52,16 @@ pub fn started_by(p: &Proc) -> Node {
 }
 
 pub fn origin_nodes(p: &Proc, port: Option<u16>) -> Vec<Node> {
+    if p.cmdline.is_empty() && p.exe.is_none() {
+        return vec![Node::new("kernel thread: part of the kernel, not a program on disk").proof(format!("no command line and no executable in /proc/{}", p.pid))];
+    }
     let proof = format!("cgroup in /proc/{}/cgroup", p.pid);
     match process::origin(p.pid) {
         Origin::Service { name, user } => {
             let mut n = Node::new(format!("systemd {}service: {name}", if user { "user " } else { "" })).proof(proof);
             let files = unit::files(&name, user);
             if files.is_empty() {
-                n.add(Node::new("unit file not found in the standard directories").unknown());
+                n.add(Node::new("unit file not found in the standard directories (the unit may have been removed since it started)").unknown());
             }
             for f in files {
                 let node = n.add(Node::new(format!("file: {}", f.display())).proof("systemd directories"));
@@ -88,6 +97,7 @@ pub fn origin_nodes(p: &Proc, port: Option<u16>) -> Vec<Node> {
             }
             vec![n]
         }
+        Origin::Scope(s) if s == "init.scope" => vec![Node::new("init.scope: the system's own init (pid 1 and what it starts directly)").proof(proof)],
         Origin::Scope(s) => vec![Node::new(format!("scope: {s} (started from a login session or an app, not by a service)")).proof(proof)],
         Origin::None if !std::path::Path::new("/run/systemd/system").exists() => {
             vec![Node::new("this system does not run systemd: I can't tell which init service (OpenRC, runit, s6, ...) manages it").unknown().proof(proof)]

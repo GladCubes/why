@@ -9,7 +9,7 @@ fn dirs(user: bool) -> Vec<PathBuf> {
         d.extend(["/etc/systemd/user", "/usr/lib/systemd/user"].map(PathBuf::from));
         d
     } else {
-        ["/etc/systemd/system", "/run/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"].map(PathBuf::from).to_vec()
+        ["/etc/systemd/system", "/run/systemd/system", "/run/systemd/transient", "/usr/lib/systemd/system", "/lib/systemd/system"].map(PathBuf::from).to_vec()
     }
 }
 

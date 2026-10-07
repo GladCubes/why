@@ -79,6 +79,11 @@ fn mount_of(path: &Path) -> Option<String> {
 }
 
 fn owner_node(real: &Path, m: &fs::Metadata) -> Node {
+    let ft = m.file_type();
+    let runtime = ["/proc/", "/sys/", "/dev/", "/run/"].iter().any(|p| real.starts_with(p));
+    if ft.is_socket() || ft.is_fifo() || ft.is_block_device() || ft.is_char_device() || runtime {
+        return Node::new("a runtime object: created by the kernel or a running program, not installed by a package").probable().proof("file type and location");
+    }
     if m.is_dir() {
         return Node::new("directory: ownership by package not checked").unknown();
     }
@@ -144,6 +149,11 @@ fn references(real: &Path) -> Vec<Node> {
         if let Some((i, l)) = text.lines().enumerate().find(|(_, l)| !l.trim_start().starts_with('#') && l.contains(&needle)) {
             n.add(Node::new(format!("{}:{}: {}", f.display(), i + 1, short(l.trim(), 110))).probable().proof("text match"));
         }
+    }
+    let total = n.children.len();
+    n.children.truncate(6);
+    if total > 6 {
+        n.add(Node::new(format!("... and {} more", total - 6)).unknown());
     }
     if n.children.is_empty() { vec![] } else { vec![n] }
 }

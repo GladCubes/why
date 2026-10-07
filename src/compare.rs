@@ -30,6 +30,10 @@ pub fn fetch(arg: &str, local: impl Fn() -> Snapshot) -> Result<Snapshot, String
     if arg.starts_with('-') {
         return Err(format!("`{arg}` is not a file or a host"));
     }
+    // something that looks like a path is a missing file, not a host name: no point asking ssh
+    if arg.contains('/') || arg.contains('\\') {
+        return Err(format!("{arg}: no such file"));
+    }
     let out = Command::new("ssh").args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", arg, "why", "snapshot"]).output().map_err(|e| format!("cannot run ssh: {e}"))?;
     if !out.status.success() {
         return Err(format!("{arg}: ssh failed or `why` is not installed there ({})", String::from_utf8_lossy(&out.stderr).trim().lines().last().unwrap_or("no details")));
