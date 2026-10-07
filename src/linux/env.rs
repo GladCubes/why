@@ -25,7 +25,7 @@ pub fn parse_def(line: &str) -> Option<(String, String)> {
         return None;
     }
     // NAME=value (shell, .env, systemd), NAME: value (yaml, fish_variables), NAME value (fish)
-    let v = rest.strip_prefix('=').or_else(|| rest.strip_prefix(':')).or_else(|| rest.strip_prefix(' '))?;
+    let v = rest.trim_start().strip_prefix('=').or_else(|| rest.strip_prefix(':')).or_else(|| rest.strip_prefix(' '))?;
     Some((name.to_string(), v.trim().trim_matches(|c| c == '"' || c == '\'').to_string()))
 }
 
@@ -102,6 +102,8 @@ fn show(name: &str, v: &str) -> String {
 fn shell_files() -> Vec<PathBuf> {
     let mut f: Vec<PathBuf> = ["/etc/environment", "/etc/profile", "/etc/bash.bashrc", "/etc/zsh/zshenv", "/etc/zsh/zprofile", "/etc/zsh/zshrc", "/etc/fish/config.fish"].map(PathBuf::from).to_vec();
     f.extend(list("/etc/profile.d", |n| n.ends_with(".sh")));
+    f.extend(list("/etc/environment.d", |n| n.ends_with(".conf")));
+    f.extend(list("/usr/lib/environment.d", |n| n.ends_with(".conf")));
     if let Some(h) = home() {
         for n in [".profile", ".bash_profile", ".bashrc", ".zshenv", ".zprofile", ".zshrc", ".pam_environment", ".config/fish/config.fish", ".config/fish/fish_variables"] {
             f.push(h.join(n));
@@ -151,6 +153,8 @@ fn project_files() -> Vec<PathBuf> {
     out
 }
 
+/// Lowercase names that really are environment variables (the rest of lowercase keys in YAML is noise).
+const PROXY: [&str; 5] = ["http_proxy", "https_proxy", "no_proxy", "ftp_proxy", "all_proxy"];
 const SHELL_NOTE: &str = "read when the shell starts or at login";
 const SERVICE_NOTE: &str = "read by systemd for that service, not by the shell";
 const PROJECT_NOTE: &str = "NOT read by the shell: only applies to programs that load it (dotenv, docker compose, ...)";
@@ -225,7 +229,7 @@ fn definitions(name: Option<&str>, wide: bool) -> Vec<Def> {
                 // when listing, only names that look like environment variables (the rest is YAML noise)
                 let keep = match name {
                     Some(w) => n == w,
-                    None => n.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'),
+                    None => n.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') || PROXY.contains(&n.as_str()),
                 };
                 if keep {
                     out.push(Def { note, file: file.clone(), line: i + 1, name: n, value });
@@ -395,6 +399,8 @@ mod tests {
         assert_eq!(def("  FOO: bar", "FOO").as_deref(), Some("bar"));
         assert_eq!(def("# export FOO=bar", "FOO"), None);
         assert_eq!(def("export FOOBAR=1", "FOO"), None);
+        assert_eq!(def("FOO = bar", "FOO").as_deref(), Some("bar"));
+        assert_eq!(def("export FOO='it works'", "FOO").as_deref(), Some("it works"));
     }
 
     #[test]

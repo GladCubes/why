@@ -43,6 +43,20 @@ Seeing other users' processes and the firewall needs `sudo`. `why` **only reads*
 
 Tunnels: it sees what runs *on this machine*. A tunnel on another machine (a VPS forwarding to this host) shows up at most as traffic arriving through an interface such as `wg0`; it says so instead of guessing.
 
+## What it understands
+
+| area | supported |
+|---|---|
+| init / service manager | systemd (units, drop-ins, `EnvironmentFile=`, the script `ExecStart=` launches); on OpenRC, runit, s6 it says it can't tell instead of guessing |
+| containers | Docker, Podman, containerd, CRI-O, Kubernetes pods, LXC, Incus/LXD (including their port proxies), cgroup v1 and v2 |
+| firewall | nft, iptables, ip6tables (`ufw` and `firewalld` show up as the rules they generate) |
+| tunnels | ssh `-L/-R/-D`, cloudflared (config file), WireGuard, ngrok, frp, chisel, bore, rathole, zrok, tailscale serve |
+| variables | bash, zsh, fish, `/etc/environment(.d)`, `.env*`, docker-compose, systemd `Environment=` |
+
+Tested on Arch Linux and Ubuntu 24.04. It reads only what the kernel and standard config locations expose, so on a very unusual setup the answer is "I don't know" (`?`), not a wrong answer.
+
+Not covered yet: listeners inside other network namespaces (a container's private ports that are not published), macOS, Windows.
+
 ## Status
 
 Linux (read from `/proc`). Windows, `why package` and `why compare` are next. No external dependencies.

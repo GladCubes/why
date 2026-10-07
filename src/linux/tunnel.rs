@@ -6,10 +6,12 @@ use std::fs;
 
 const OTHERS: [&str; 7] = ["ngrok", "frpc", "frps", "chisel", "bore", "rathole", "zrok"];
 
-/// WireGuard interface named by an nft rule fragment (`iifname "wg0"`).
+/// WireGuard interface named by a firewall rule: nft `iifname "wg0"` or iptables `-i wg0`.
 pub fn wireguard_in(rule: &str) -> Option<String> {
-    let rest = rule.split("iifname ").nth(1)?.trim_start_matches(['!', '=', ' ']);
-    let name = rest.trim_start_matches('"').split('"').next()?;
+    let name = match rule.split("iifname ").nth(1) {
+        Some(r) => r.trim_start_matches(['!', '=', ' ']).trim_start_matches('"').split('"').next()?,
+        None => rule.split(" -i ").nth(1)?.split_whitespace().next()?,
+    };
     is_wireguard(name).then(|| name.to_string())
 }
 

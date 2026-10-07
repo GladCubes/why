@@ -59,21 +59,34 @@ pub enum Origin {
     None,
 }
 
-/// Which systemd service or container manages it, read from the cgroup.
+/// Which systemd service or container manages it, read from the cgroup (v2 `0::/path`, or v1 `N:name=systemd:/path`).
 pub fn origin(pid: u32) -> Origin {
     let Ok(text) = fs::read_to_string(format!("/proc/{pid}/cgroup")) else { return Origin::None };
-    let Some(path) = text.lines().find_map(|l| l.strip_prefix("0::")) else { return Origin::None };
-    classify(path)
+    let paths: Vec<&str> = text.lines().filter_map(|l| l.splitn(3, ':').nth(2)).collect();
+    // a container shows up in any hierarchy; a service in the systemd one
+    let first = paths.iter().map(|p| classify(p)).find(|o| matches!(o, Origin::Container { .. }));
+    first.or_else(|| paths.iter().map(|p| classify(p)).find(|o| *o != Origin::None)).unwrap_or(Origin::None)
 }
 
 fn classify(path: &str) -> Origin {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     for s in parts.iter().rev() {
-        for (prefix, runtime) in [("docker-", "docker"), ("libpod-", "podman"), ("cri-containerd-", "containerd")] {
+        // LXC and Incus name the payload cgroup after the container
+        for (prefix, runtime) in [("lxc.payload.", "lxc"), ("incus.payload.", "incus")] {
+            if let Some(name) = s.strip_prefix(prefix) {
+                return Origin::Container { runtime, id: name.to_string() };
+            }
+        }
+        for (prefix, runtime) in [("docker-", "docker"), ("libpod-", "podman"), ("cri-containerd-", "containerd"), ("crio-", "cri-o")] {
             if let Some(id) = s.strip_prefix(prefix).and_then(|r| r.strip_suffix(".scope")) {
                 return Origin::Container { runtime, id: id.to_string() };
             }
         }
+    }
+    // cgroup v1 layouts: /docker/<64 hex>, /kubepods/.../<64 hex>
+    if let Some(id) = parts.iter().rev().find(|s| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())) {
+        let runtime = if parts.first() == Some(&"docker") { "docker" } else { "container" };
+        return Origin::Container { runtime, id: id.to_string() };
     }
     if let Some(s) = parts.iter().rev().find(|s| s.ends_with(".service") && !s.starts_with("user@")) {
         return Origin::Service { name: s.to_string(), user: parts.iter().any(|p| p.starts_with("user@")) };
@@ -94,5 +107,11 @@ mod tests {
         assert_eq!(classify("/user.slice/user-1000.slice/user@1000.service/app.slice/foo.service"), Origin::Service { name: "foo.service".into(), user: true });
         assert_eq!(classify("/system.slice/docker-abc123.scope"), Origin::Container { runtime: "docker", id: "abc123".into() });
         assert_eq!(classify("/user.slice/user-1000.slice/session-2.scope"), Origin::Scope("session-2.scope".into()));
+        assert_eq!(classify("/lxc.payload.web/system.slice/nginx.service"), Origin::Container { runtime: "lxc", id: "web".into() });
+        assert_eq!(classify("/incus.payload.db/init.scope"), Origin::Container { runtime: "incus", id: "db".into() });
+        assert_eq!(classify("/kubepods.slice/kubepods-burstable.slice/crio-abc.scope"), Origin::Container { runtime: "cri-o", id: "abc".into() });
+        let id = "a".repeat(64);
+        assert_eq!(classify(&format!("/docker/{id}")), Origin::Container { runtime: "docker", id });
+        assert_eq!(classify("/"), Origin::None);
     }
 }

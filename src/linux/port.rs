@@ -130,17 +130,22 @@ fn origin_nodes(p: &Proc, port: u16) -> Vec<Node> {
         }
         Origin::Container { runtime, id } => {
             let mut n = Node::new(format!("{runtime} container: {}", &id[..id.len().min(12)])).proof(proof);
-            match run(runtime, &["inspect", "--format", "{{.Name}}  image {{.Config.Image}}", &id]) {
-                Some(s) => {
-                    n.add(Node::new(s.trim().to_string()).proof(format!("{runtime} inspect")));
-                }
-                None => {
-                    n.add(Node::new(format!("{runtime} does not answer (permissions?): can't tell name and image")).unknown());
+            if matches!(runtime, "docker" | "podman") {
+                match run(runtime, &["inspect", "--format", "{{.Name}}  image {{.Config.Image}}", &id]) {
+                    Some(s) => {
+                        n.add(Node::new(s.trim().to_string()).proof(format!("{runtime} inspect")));
+                    }
+                    None => {
+                        n.add(Node::new(format!("{runtime} does not answer (permissions?): can't tell name and image")).unknown());
+                    }
                 }
             }
             vec![n]
         }
         Origin::Scope(s) => vec![Node::new(format!("scope: {s} (started from a login session or an app, not by a service)")).proof(proof)],
+        Origin::None if !std::path::Path::new("/run/systemd/system").exists() => {
+            vec![Node::new("this system does not run systemd: I can't tell which init service (OpenRC, runit, s6, ...) manages it").unknown().proof(proof)]
+        }
         Origin::None => vec![Node::new("no service or container: started by hand or by a script").proof(proof).probable()],
     }
 }
@@ -199,20 +204,21 @@ fn front_node(port: u16) -> Node {
     let mut n = Node::new("network in front of the process");
     let p = port.to_string();
     let mut via_wg = vec![];
-    match run("nft", &["list", "ruleset"]) {
-        Some(rules) => {
-            let hits: Vec<&str> = rules.lines().map(str::trim).filter(|l| l.contains("port") && has_token(l, &p)).take(6).collect();
-            for h in &hits {
-                n.add(Node::new(short(h, 140)).probable().proof("nft list ruleset: the rule names the port"));
-                via_wg.extend(tunnel::wireguard_in(h));
-            }
-            if hits.is_empty() {
-                n.add(Node::new("no nft rule names this port").proof("nft list ruleset"));
-            }
+    let mut any_firewall = false;
+    for (tool, args) in [("nft", &["list", "ruleset"][..]), ("iptables-save", &[][..]), ("ip6tables-save", &[][..])] {
+        let Some(rules) = run(tool, args) else { continue };
+        any_firewall = true;
+        let hits: Vec<&str> = rules.lines().map(str::trim).filter(|l| l.contains("port") && has_token(l, &p)).take(6).collect();
+        for h in &hits {
+            n.add(Node::new(short(h, 140)).probable().proof(format!("{tool}: the rule names the port")));
+            via_wg.extend(tunnel::wireguard_in(h));
         }
-        None => {
-            n.add(Node::new("nft rules not readable (needs root, or nft is missing)").unknown());
+        if hits.is_empty() {
+            n.add(Node::new(format!("no {tool} rule names this port")).proof(tool.to_string()));
         }
+    }
+    if !any_firewall {
+        n.add(Node::new("firewall rules not readable (needs root, or none of nft/iptables is installed)").unknown());
     }
     for rt in ["docker", "podman"] {
         if let Some(out) = run(rt, &["ps", "--format", "{{.Names}}\t{{.Ports}}"]) {
@@ -227,6 +233,9 @@ fn front_node(port: u16) -> Node {
 
 /// docker-proxy forwards the port to a container: find which one from the IP in its command line.
 fn proxy_target(p: &Proc) -> Option<Node> {
+    if matches!(p.name.as_str(), "incusd" | "lxd") {
+        return forkproxy_target(p);
+    }
     if p.name != "docker-proxy" {
         return None;
     }
@@ -243,6 +252,23 @@ fn proxy_target(p: &Proc) -> Option<Node> {
         }
         None => {
             n.add(Node::new("container not identified (docker does not answer or it is gone)").unknown());
+        }
+    }
+    Some(n)
+}
+
+/// Incus/LXD proxy device: `forkproxy -- <pid> <fd> <listen addr> <pid> <fd> <connect addr> ...`; the second pid is inside the container.
+fn forkproxy_target(p: &Proc) -> Option<Node> {
+    let args = &p.cmdline[p.cmdline.iter().position(|a| a == "forkproxy")? + 1..];
+    let args: Vec<&String> = args.iter().skip_while(|a| a.as_str() == "--").collect();
+    let (pid, addr) = (args.get(3)?.parse::<u32>().ok()?, args.get(5)?);
+    let mut n = Node::new(format!("proxy device: forwards to {addr} inside another namespace (pid {pid})")).proof("forkproxy arguments");
+    match process::origin(pid) {
+        Origin::Container { runtime, id } => {
+            n.add(Node::new(format!("that process lives in the {runtime} container `{id}`")).proof(format!("cgroup in /proc/{pid}/cgroup")));
+        }
+        _ => {
+            n.add(Node::new("could not tell which container that is").unknown());
         }
     }
     Some(n)
