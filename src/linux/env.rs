@@ -29,6 +29,53 @@ pub fn parse_def(line: &str) -> Option<(String, String)> {
     Some((name.to_string(), v.trim().trim_matches(|c| c == '"' || c == '\'').to_string()))
 }
 
+/// The value `name` has in the environment a process was started with (None if unreadable or not there).
+fn environ_value(pid: u32, name: &str) -> Option<String> {
+    let raw = fs::read(format!("/proc/{pid}/environ")).ok()?;
+    let key = format!("{name}=");
+    raw.split(|b| *b == 0).find_map(|e| String::from_utf8_lossy(e).strip_prefix(&key).map(String::from))
+}
+
+/// Who probably loads this definition: running programs working in the file's directory and systemd units that point at it.
+fn consumers(file: &Path, name: &str, value: &str) -> Vec<Node> {
+    let Some(dir) = file.parent().filter(|d| *d != Path::new("/")) else { return vec![] };
+    let mut out: Vec<Node> = vec![];
+    let mut seen: Vec<(String, PathBuf)> = vec![];
+    for p in process::all() {
+        let dir_s = dir.to_string_lossy();
+        let in_cmd = p.cmdline.iter().any(|a| a.starts_with(dir_s.as_ref()));
+        if p.pid == std::process::id() {
+            continue;
+        }
+        let Some(cwd) = p.cwd.clone().filter(|c| in_cmd || c.starts_with(dir)) else { continue };
+        if seen.contains(&(p.name.clone(), cwd.clone())) || out.len() >= 5 {
+            continue;
+        }
+        seen.push((p.name.clone(), cwd.clone()));
+        let mut n = Node::new(format!("used by: {} (pid {}, user {})", short(&p.cmdline.join(" "), 90), p.pid, p.user)).probable().proof("it runs from the file's directory or is launched with a path inside it: where dotenv-style loaders look");
+        if let Some(v) = environ_value(p.pid, name) {
+            let same = if v == value { "the same value" } else { "a DIFFERENT value" };
+            n.add(Node::new(format!("the process was started with {name} in its environment: {same}")).proof(format!("/proc/{}/environ", p.pid)));
+        }
+        out.push(n);
+    }
+    for e in fs::read_dir("/etc/systemd/system").into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        if !n.ends_with(".service") {
+            continue;
+        }
+        let text = fs::read_to_string(e.path()).unwrap_or_default();
+        let hit = text.lines().map(str::trim).find(|l| {
+            (l.starts_with("WorkingDirectory=") || l.starts_with("ExecStart=")) && l.contains(dir.to_string_lossy().as_ref())
+                || l.strip_prefix("EnvironmentFile=").is_some_and(|f| Path::new(f.trim_start_matches('-')) == file)
+        });
+        if let Some(l) = hit {
+            out.push(Node::new(format!("systemd service {n} points at it: {l}")).proof(e.path().display().to_string()));
+        }
+    }
+    out
+}
+
 /// `${NAME}` in a compose file points at another variable instead of giving a value.
 fn is_ref(v: &str) -> bool {
     v.contains("${") || v.starts_with('$')
@@ -206,6 +253,9 @@ pub fn explain(name: &str) -> Node {
             let same = current.as_deref() == Some(d.value.as_str());
             let label = format!("{}:{}  =  {}{}", d.file.display(), d.line, show(name, &d.value), if same { "   ← same value as the current environment" } else { "" });
             let n = g.add(Node::new(label).probable().proof(note));
+            if note != SHELL_NOTE && !is_ref(&d.value) {
+                n.children.extend(consumers(&d.file, name, &d.value));
+            }
             if is_ref(&d.value) {
                 n.add(Node::new("a reference to another variable: the real value is defined elsewhere").probable());
             } else if !same && current.is_some() {
