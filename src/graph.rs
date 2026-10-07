@@ -1,13 +1,13 @@
-//! La catena di spiegazioni: ogni nodo dice cosa e', come lo so (prova) e quanto sono sicuro.
+//! The chain of explanations: every node says what it is, how I know (proof) and how sure I am.
 use std::io::IsTerminal;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Certainty {
-    /// letto direttamente dal sistema
+    /// read directly from the system
     Certain,
-    /// ricavato da una corrispondenza di testo: probabile, non dimostrato
+    /// derived from a text match: probable, not proven
     Probable,
-    /// non sono riuscito a verificarlo
+    /// I could not verify it
     Unknown,
 }
 
@@ -40,7 +40,7 @@ impl Node {
     }
 }
 
-/// Stampa l'albero; scrive su un buffer cosi' una pipe chiusa (`why ... | head`) non fa andare in panico il programma.
+/// Prints the tree. It writes through one buffer so a closed pipe (`why ... | head`) does not panic.
 pub fn print(root: &Node) {
     use std::io::Write;
     let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();

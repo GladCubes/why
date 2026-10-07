@@ -1,4 +1,4 @@
-//! Un processo visto da /proc: comando, cartella, utente, chi lo ha avviato e da quale servizio/contenitore.
+//! A process as seen from /proc: command, directory, user, who started it and which service/container manages it.
 use crate::util::user_name;
 use std::fs;
 use std::path::PathBuf;
@@ -33,7 +33,7 @@ pub fn read(pid: u32) -> Option<Proc> {
     })
 }
 
-/// Catena dei genitori, dal piu' vicino fino a init (massimo 8 passi).
+/// Parent chain, nearest first, up to init (at most 8 steps).
 pub fn ancestors(pid: u32) -> Vec<Proc> {
     let mut out = vec![];
     let mut cur = read(pid).map(|p| p.ppid).unwrap_or(0);
@@ -45,6 +45,12 @@ pub fn ancestors(pid: u32) -> Vec<Proc> {
     out
 }
 
+/// Every process that can be read.
+pub fn all() -> Vec<Proc> {
+    let Ok(rd) = fs::read_dir("/proc") else { return vec![] };
+    rd.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).filter_map(read).collect()
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Origin {
     Service { name: String, user: bool },
@@ -53,7 +59,7 @@ pub enum Origin {
     None,
 }
 
-/// Da quale servizio systemd o contenitore e' gestito, letto dal cgroup.
+/// Which systemd service or container manages it, read from the cgroup.
 pub fn origin(pid: u32) -> Origin {
     let Ok(text) = fs::read_to_string(format!("/proc/{pid}/cgroup")) else { return Origin::None };
     let Some(path) = text.lines().find_map(|l| l.strip_prefix("0::")) else { return Origin::None };

@@ -1,10 +1,10 @@
-//! Piccoli attrezzi condivisi: ricerca di un numero in un file, lancio di comandi, nomi utente.
+//! Small shared helpers: finding a number in a file, running commands, user names.
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-/// `needle` come numero intero (non attaccato a cifre, lettere o punti: niente "80" dentro "1.80" o "8080").
-/// Unica eccezione: attaccato a "port" a sinistra (`-port7777`, `PORT=` senza spazi), che e' il modo normale di scriverlo.
+/// `needle` as a whole number (not glued to digits, letters or dots: no "80" inside "1.80" or "8080").
+/// The one exception is a leading "port" (`-port7777`), which is the normal way to write it.
 pub fn has_token(line: &str, needle: &str) -> bool {
     let b = line.as_bytes();
     let low = line.to_ascii_lowercase();
@@ -14,7 +14,7 @@ pub fn has_token(line: &str, needle: &str) -> bool {
     })
 }
 
-/// Righe (numero, testo accorciato) di un file di testo che contengono il numero come parola intera.
+/// Lines (number, shortened text) of a text file that contain the number as a whole word.
 pub fn grep_token(path: &Path, needle: &str, max: usize) -> Vec<(usize, String)> {
     match fs::metadata(path) {
         Ok(m) if m.is_file() && m.len() < 1_000_000 => {}
@@ -33,7 +33,7 @@ pub fn short(s: &str, n: usize) -> String {
     if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n).collect::<String>()) }
 }
 
-/// Esegue un comando e ne restituisce l'output se e' andato a buon fine (None se manca o fallisce).
+/// Runs a command and returns its output if it succeeded (None if it is missing or fails).
 pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
     let o = Command::new(cmd).args(args).output().ok()?;
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())

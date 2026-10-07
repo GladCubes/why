@@ -1,4 +1,4 @@
-//! Chi ascolta su una porta: tabelle /proc/net/* (socket) e /proc/<pid>/fd (di chi e' il socket).
+//! Who listens where: the /proc/net/* socket tables and /proc/<pid>/fd (whose socket it is).
 use std::collections::HashMap;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -6,6 +6,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub struct Listener {
     pub proto: &'static str,
     pub addr: String,
+    pub port: u16,
     pub inode: u64,
 }
 
@@ -16,7 +17,8 @@ const TABLES: [(&str, &str, &str); 4] = [
     ("/proc/net/udp6", "udp", "07"),
 ];
 
-pub fn listeners(port: u16) -> Vec<Listener> {
+/// Listening sockets, all of them or only those on `only`.
+pub fn listeners(only: Option<u16>) -> Vec<Listener> {
     let mut out = vec![];
     for (path, proto, state) in TABLES {
         let Ok(text) = fs::read_to_string(path) else { continue };
@@ -26,11 +28,12 @@ pub fn listeners(port: u16) -> Vec<Listener> {
                 continue;
             }
             let Some((ip, p)) = f[1].rsplit_once(':') else { continue };
-            if u16::from_str_radix(p, 16) != Ok(port) {
+            let Ok(port) = u16::from_str_radix(p, 16) else { continue };
+            if only.is_some_and(|o| o != port) {
                 continue;
             }
             let (Some(addr), Ok(inode)) = (parse_ip(ip), f[9].parse()) else { continue };
-            out.push(Listener { proto, addr: format!("{addr}:{port}"), inode });
+            out.push(Listener { proto, addr: format!("{addr}:{port}"), port, inode });
         }
     }
     out
@@ -51,7 +54,7 @@ fn parse_ip(hex: &str) -> Option<String> {
     }
 }
 
-/// Per ogni inode, i processi che hanno quel socket aperto. Il secondo valore conta i processi che non ho potuto leggere.
+/// For each inode, the processes that hold that socket open. The second value counts processes I could not read.
 pub fn owners(inodes: &[u64]) -> (HashMap<u64, Vec<u32>>, usize) {
     let mut map: HashMap<u64, Vec<u32>> = HashMap::new();
     let mut unreadable = 0;
