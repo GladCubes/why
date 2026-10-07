@@ -29,9 +29,14 @@ pub fn parse_def(line: &str) -> Option<(String, String)> {
     Some((name.to_string(), v.trim().trim_matches(|c| c == '"' || c == '\'').to_string()))
 }
 
+/// `${NAME}` in a compose file points at another variable instead of giving a value.
+fn is_ref(v: &str) -> bool {
+    v.contains("${") || v.starts_with('$')
+}
+
 fn secret(name: &str) -> bool {
     let n = name.to_uppercase();
-    ["KEY", "TOKEN", "SECRET", "PASS", "PWD", "AUTH"].iter().any(|k| n.contains(k))
+    ["KEY", "TOKEN", "SECRET", "PASS", "PWD", "AUTH", "SALT", "PRIVATE", "CRED", "SIGN"].iter().any(|k| n.contains(k))
 }
 
 /// Sensitive values never reach the screen: two characters and the length; in URLs only the password is hidden.
@@ -201,7 +206,9 @@ pub fn explain(name: &str) -> Node {
             let same = current.as_deref() == Some(d.value.as_str());
             let label = format!("{}:{}  =  {}{}", d.file.display(), d.line, show(name, &d.value), if same { "   ← same value as the current environment" } else { "" });
             let n = g.add(Node::new(label).probable().proof(note));
-            if !same && current.is_some() {
+            if is_ref(&d.value) {
+                n.add(Node::new("a reference to another variable: the real value is defined elsewhere").probable());
+            } else if !same && current.is_some() {
                 n.add(Node::new("different value: overridden, not loaded, or redefined further down").probable());
             }
         }
@@ -268,10 +275,12 @@ fn list_project() -> String {
     }
     out.push_str(&format!("{:<28} {:<38} {}\n", "NAME", "VALUE", "DEFINED IN"));
     for (name, defs) in names {
-        let differ = defs.iter().any(|d| d.value != defs[0].value);
+        let real: Vec<&Def> = defs.iter().filter(|d| !is_ref(&d.value)).collect();
+        let differ = real.iter().any(|d| d.value != real[0].value);
+        let shown = real.first().map(|d| d.value.as_str()).unwrap_or(&defs[0].value);
         let places = defs.iter().map(|d| format!("{}:{}", d.file.display(), d.line)).collect::<Vec<_>>();
         let w = if places.len() > 2 { format!("{}, +{} more", places[..2].join(", "), places.len() - 2) } else { places.join(", ") };
-        out.push_str(&format!("{:<28} {:<38} {w}{}\n", short(&name, 27), short(&show(&name, &defs[0].value), 37), if differ { "   ≠ values differ between files" } else { "" }));
+        out.push_str(&format!("{:<28} {:<38} {w}{}\n", short(&name, 27), short(&show(&name, shown), 37), if differ { "   ≠ values differ between files" } else { "" }));
     }
     out.push_str("\nProject and service files only. `why env list all` adds the shell and system environment.\n");
     out
@@ -309,6 +318,8 @@ mod tests {
     fn hides_secrets() {
         assert!(show("API_TOKEN", "abcdef").contains("hidden"));
         assert_eq!(show("PORT", "3000"), "3000");
+        assert!(show("HASHIDS_SALT", "abcdef").contains("hidden"));
+        assert!(is_ref("${TUNNEL_TOKEN}") && !is_ref("abc"));
         assert_eq!(show("DATABASE_URL", "postgres://u:pw@localhost/db"), "postgres://u:***@localhost/db");
     }
 }
