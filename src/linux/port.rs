@@ -1,16 +1,16 @@
 //! `why port N`: who listens, how it was started, which configuration names the port and what sits in front of it.
 use super::process::{self, Origin, Proc};
-use super::{sockets, tunnel, unit};
+use super::{kubernetes, sockets, tunnel, unit};
 use crate::graph::Node;
 use crate::util::{grep_token, has_token, run, short};
 use std::fs;
 use std::path::PathBuf;
 
-pub fn explain(port: u16) -> Node {
-    let mut root = Node::new(format!("PORT {port}"));
-    let ls = sockets::listeners(Some(port));
+pub fn explain(port: u16, proto: Option<&str>) -> Node {
+    let mut root = Node::new(match proto { Some(p) => format!("PORT {port}/{p}"), None => format!("PORT {port}") });
+    let ls: Vec<_> = sockets::listeners(Some(port)).into_iter().filter(|l| proto.is_none_or(|p| l.proto == p)).collect();
     if ls.is_empty() {
-        root.add(Node::new("nothing is listening on this port").proof("checked the tcp/tcp6/udp/udp6 tables in /proc/net"));
+        root.add(Node::new(format!("nothing is listening on this port{}", proto.map(|p| format!(" over {p}")).unwrap_or_default())).proof("checked the tcp/tcp6/udp/udp6 tables in /proc/net"));
     }
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
     let (owners, unreadable) = if ls.is_empty() { Default::default() } else { sockets::owners(&inodes) };
@@ -32,13 +32,13 @@ pub fn explain(port: u16) -> Node {
             root.add(process_node(&p, port, &socks));
         }
     }
-    root.add(front_node(port));
+    root.add(front_node(port, proto));
     root
 }
 
 /// `why port list`: every listening port and who holds it.
-pub fn list() -> String {
-    let mut ls = sockets::listeners(None);
+pub fn list(proto: Option<&str>) -> String {
+    let mut ls: Vec<_> = sockets::listeners(None).into_iter().filter(|l| proto.is_none_or(|p| l.proto == p)).collect();
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
     let (owners, unreadable) = sockets::owners(&inodes);
     ls.sort_by(|a, b| (a.port, a.proto, &a.addr).cmp(&(b.port, b.proto, &b.addr)));
@@ -200,7 +200,7 @@ fn config_node(p: &Proc, port: u16) -> Node {
 }
 
 /// What sits in front: nft rules, ports published by containers, tunnels and forwards.
-fn front_node(port: u16) -> Node {
+fn front_node(port: u16, proto: Option<&str>) -> Node {
     let mut n = Node::new("network in front of the process");
     let p = port.to_string();
     let mut via_wg = vec![];
@@ -208,7 +208,9 @@ fn front_node(port: u16) -> Node {
     for (tool, args) in [("nft", &["list", "ruleset"][..]), ("iptables-save", &[][..]), ("ip6tables-save", &[][..])] {
         let Some(rules) = run(tool, args) else { continue };
         any_firewall = true;
-        let hits: Vec<&str> = rules.lines().map(str::trim).filter(|l| l.contains("port") && has_token(l, &p)).take(6).collect();
+        // with a protocol given, drop rules that name the other one
+        let other = match proto { Some("tcp") => "udp", Some("udp") => "tcp", _ => "" };
+        let hits: Vec<&str> = rules.lines().map(str::trim).filter(|l| l.contains("port") && has_token(l, &p) && (other.is_empty() || !has_word(l, other))).take(6).collect();
         for h in &hits {
             n.add(Node::new(short(h, 140)).probable().proof(format!("{tool}: the rule names the port")));
             via_wg.extend(tunnel::wireguard_in(h));
@@ -227,6 +229,7 @@ fn front_node(port: u16) -> Node {
             }
         }
     }
+    n.children.extend(kubernetes::services(port));
     n.add(tunnel::explain(port, &via_wg));
     n
 }
@@ -272,4 +275,9 @@ fn forkproxy_target(p: &Proc) -> Option<Node> {
         }
     }
     Some(n)
+}
+
+/// `word` as a whole word in a rule line (`udp` in `-p udp`, not in `udplite`).
+fn has_word(line: &str, word: &str) -> bool {
+    line.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == word)
 }

@@ -19,7 +19,8 @@ PORT 8080
 | command | what it rebuilds |
 |---|---|
 | `why port <N>` | who listens, command and directory, who started it (tmux, systemd, container), the unit and the script it launches, config files naming the port, nft rules, ports published by Docker/Podman, and tunnels in front (ssh `-L/-R/-D`, cloudflared ingress rules, WireGuard, ngrok/frp/chisel, tailscale serve) |
-| `why port list` | every listening port with its process |
+| `why port udp 7777` | only that protocol; `tcp 7777`, `7777/udp`, `udp:7777` all work |
+| `why port list [tcp\|udp]` | every listening port with its process |
 | `why env <NAME>` | the current value, every definition found and who probably loads each file (a running program started from that directory, or a systemd unit pointing at it): shell files (bash, zsh, fish), `/etc`, `environment.d`, `.env` and `docker-compose` in the directories above yours |
 | `why env <file>[:line]` | the variables a file defines (`why env .env`), or the variable on a given line and everywhere else it is set (`why env /var/www/app/.env:38`) |
 | `why env list` | the variables defined in your project (`.env`, `docker-compose`, two levels down and up to home), with where, and a flag when files disagree. If nothing is near you, it searches the whole machine: `/opt`, `/srv`, `/var/www`, home directories, running services, systemd units and their `EnvironmentFile=` |
@@ -48,12 +49,15 @@ Tunnels: it sees what runs *on this machine*. A tunnel on another machine (a VPS
 | area | supported |
 |---|---|
 | init / service manager | systemd (units, drop-ins, `EnvironmentFile=`, the script `ExecStart=` launches); on OpenRC, runit, s6 it says it can't tell instead of guessing |
+| Kubernetes | Services that expose the port (`kubectl get svc`, if `kubectl` can reach a cluster); pod and runtime names from the cgroup |
 | containers | Docker, Podman, containerd, CRI-O, Kubernetes pods, LXC, Incus/LXD (including their port proxies), cgroup v1 and v2 |
 | firewall | nft, iptables, ip6tables (`ufw` and `firewalld` show up as the rules they generate) |
 | tunnels | ssh `-L/-R/-D`, cloudflared (config file), WireGuard, ngrok, frp, chisel, bore, rathole, zrok, tailscale serve |
 | variables | bash, zsh, fish, `/etc/environment(.d)`, `.env*`, docker-compose, systemd `Environment=` |
 
 Tested on Arch Linux and Ubuntu 24.04. It reads only what the kernel and standard config locations expose, so on a very unusual setup the answer is "I don't know" (`?`), not a wrong answer.
+
+The Kubernetes Service lookup is only tested against sample `kubectl` output, not a live cluster yet.
 
 Not covered yet: listeners inside other network namespaces (a container's private ports that are not published), macOS, Windows.
 

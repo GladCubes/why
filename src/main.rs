@@ -10,7 +10,8 @@ const HELP: &str = "why: rebuilds where something comes from, with the proof of 
 USAGE
   why port <N>              who listens on a port, how it was started, which config names it,
                             what sits in front of it (firewall, containers, tunnels)
-  why port list             every listening port and its process
+  why port udp <N>          only that protocol; also `tcp 7777`, `7777/udp`, `udp:7777`
+  why port list [tcp|udp]   every listening port and its process
   why env <NAME>            where a variable is defined and which value it has now
   why env <file>[:line]     the variables a file defines; or the variable a given line defines, and where else it is set
   why env list              variables defined in the project (.env, docker-compose), with where
@@ -36,11 +37,15 @@ fn main() {
             None => fail("supported shells: fish, bash, zsh"),
         },
         ["__complete", what] => print!("{}", complete(what)),
-        ["port"] => print!("{}", list_ports()),
-        ["port", x] if is_list(x) => print!("{}", list_ports()),
-        ["port", n] => match n.parse::<u16>() {
-            Ok(p) if p > 0 => graph::print(&explain_port(p)),
-            _ => fail(&format!("`{n}` is not a valid port (1-65535)")),
+        ["port"] => print!("{}", list_ports(None)),
+        ["port", x, rest @ ..] if is_list(x) => match rest {
+            [] => print!("{}", list_ports(None)),
+            [pr] if proto_of(pr).is_some() => print!("{}", list_ports(proto_of(pr))),
+            _ => fail("usage: why port list [tcp|udp]"),
+        },
+        ["port", rest @ ..] => match parse_port(rest) {
+            Ok((proto, p)) => graph::print(&explain_port(p, proto)),
+            Err(e) => fail(&e),
         },
         ["env"] => print!("{}", list_env(false)),
         ["env", x] if is_list(x) => print!("{}", list_env(false)),
@@ -49,6 +54,27 @@ fn main() {
         ["env", name] => graph::print(&explain_env(name)),
         _ => fail("unknown command, try `why --help`"),
     }
+}
+
+fn proto_of(s: &str) -> Option<&'static str> {
+    match s.to_ascii_lowercase().as_str() {
+        "tcp" => Some("tcp"),
+        "udp" => Some("udp"),
+        _ => None,
+    }
+}
+
+/// `7777`, `udp 7777`, `7777/udp`, `udp/7777`, `tcp:7777`, `:7777` -> (protocol, port)
+fn parse_port(args: &[&str]) -> Result<(Option<&'static str>, u16), String> {
+    let (mut proto, mut port) = (None, None);
+    for tok in args.iter().flat_map(|a| a.split(['/', ':', ' '])).filter(|t| !t.is_empty()) {
+        match (proto_of(tok), tok.parse::<u16>()) {
+            (Some(p), _) if proto.is_none() => proto = Some(p),
+            (None, Ok(n)) if n > 0 && port.is_none() => port = Some(n),
+            _ => return Err(format!("`{}` is not a port: try `why port 7777`, `why port udp 7777` or `why port 7777/tcp`", args.join(" "))),
+        }
+    }
+    port.map(|p| (proto, p)).ok_or_else(|| "usage: why port <N> (or `why port list`)".to_string())
 }
 
 fn fail(msg: &str) {
@@ -66,9 +92,9 @@ mod platform {
 mod platform {
     use crate::graph::Node;
     const MSG: &str = "this platform is not supported yet";
-    pub fn explain_port(_: u16) -> Node { Node::new(MSG).unknown() }
+    pub fn explain_port(_: u16, _: Option<&str>) -> Node { Node::new(MSG).unknown() }
     pub fn explain_env(_: &str) -> Node { Node::new(MSG).unknown() }
-    pub fn list_ports() -> String { format!("{MSG}\n") }
+    pub fn list_ports(_: Option<&str>) -> String { format!("{MSG}\n") }
     pub fn list_env(_: bool) -> String { format!("{MSG}\n") }
     pub fn complete_port() -> String { String::new() }
     pub fn complete_env() -> String { String::new() }
@@ -81,5 +107,24 @@ fn complete(what: &str) -> String {
         "port" => platform::complete_port(),
         "env" => platform::complete_env(),
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_port_syntaxes() {
+        assert_eq!(parse_port(&["7777"]), Ok((None, 7777)));
+        assert_eq!(parse_port(&["udp", "7777"]), Ok((Some("udp"), 7777)));
+        assert_eq!(parse_port(&["7777/tcp"]), Ok((Some("tcp"), 7777)));
+        assert_eq!(parse_port(&["UDP:7777"]), Ok((Some("udp"), 7777)));
+        assert_eq!(parse_port(&[":8080"]), Ok((None, 8080)));
+        assert!(parse_port(&["tcp"]).is_err());
+        assert!(parse_port(&["0"]).is_err());
+        assert!(parse_port(&["70000"]).is_err());
+        assert!(parse_port(&["7777", "8888"]).is_err());
+        assert!(parse_port(&["http"]).is_err());
     }
 }
