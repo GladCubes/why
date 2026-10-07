@@ -73,8 +73,10 @@ mod tests {
     /// The files shipped in packages (`completions/`) must match what `why completions` prints.
     #[test]
     fn packaged_files_match() {
-        assert_eq!(script("bash"), Some(include_str!("../completions/why.bash")));
-        assert_eq!(script("fish"), Some(include_str!("../completions/why.fish")));
-        assert_eq!(script("zsh"), Some(include_str!("../completions/_why")));
+        // compared without carriage returns: a Windows checkout may convert line endings
+        let same = |shell: &str, file: &str| script(shell).map(|s| s.replace('\r', "")) == Some(file.replace('\r', ""));
+        assert!(same("bash", include_str!("../completions/why.bash")));
+        assert!(same("fish", include_str!("../completions/why.fish")));
+        assert!(same("zsh", include_str!("../completions/_why")));
     }
 }

@@ -1,0 +1,3 @@
+# keep these byte-for-byte (packaged / run as-is): no CRLF conversion on Windows checkouts
+completions/* text eol=lf
+*.sh text eol=lf
