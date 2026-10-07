@@ -324,7 +324,7 @@ fn list_project() -> String {
     let wide = needs_wide(None);
     let names = project_names(wide);
     if names.is_empty() {
-        return "No .env, docker-compose or systemd Environment files found on this machine.\nUse `why env list all` for the shell and system variables.\n".into();
+        return "No .env or docker-compose files (and no service environment files) found on this machine.\nUse `why env list all` for the shell and system variables.\n".into();
     }
     let mut out = String::new();
     if wide {

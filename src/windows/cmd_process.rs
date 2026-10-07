@@ -11,8 +11,22 @@ fn find(arg: &str) -> Vec<Proc> {
         return super::process::read(pid).into_iter().collect();
     }
     let want = proc::norm(Path::new(arg).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_str());
+    // not ourselves, and not the PowerShell helpers we started to ask
+    let all = proc::all();
     let me = std::process::id();
-    proc::all().into_iter().filter(|p| p.pid != me && proc::norm(&p.name) == want).collect()
+    let ours = |mut pid: u32| {
+        for _ in 0..4 {
+            if pid == me {
+                return true;
+            }
+            match all.iter().find(|p| p.pid == pid) {
+                Some(p) => pid = p.ppid,
+                None => return false,
+            }
+        }
+        false
+    };
+    all.iter().filter(|p| !ours(p.pid) && proc::norm(&p.name) == want).cloned().collect()
 }
 
 pub fn explain(arg: &str) -> Node {

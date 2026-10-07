@@ -38,7 +38,11 @@ pub fn explain(arg: &str) -> Node {
         }
         root.add(n);
     }
-    root.children.extend(describe::identity(&full));
+    // signatures and version resources only exist on programs, libraries and scripts
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if ["exe", "dll", "sys", "ocx", "scr", "msi", "ps1", "psm1", "cat", "drv", "cpl", "efi", "mui"].contains(&ext.as_str()) {
+        root.children.extend(describe::identity(&full));
+    }
     root.children.extend(belongs_to(&full));
     root.children.extend(users(&full));
     root.children.extend(references(&full));
