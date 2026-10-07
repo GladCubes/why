@@ -5,19 +5,6 @@ use crate::util::run;
 use std::fs;
 use std::process::Command;
 
-const TOOLS: [(&str, &[&str]); 31] = [
-    ("node", &["--version"]), ("npm", &["--version"]), ("python3", &["--version"]), ("pip3", &["--version"]), ("java", &["-version"]),
-    ("dotnet", &["--version"]), ("go", &["version"]), ("rustc", &["--version"]), ("cargo", &["--version"]), ("gcc", &["--version"]),
-    ("clang", &["--version"]), ("make", &["--version"]), ("git", &["--version"]), ("docker", &["--version"]), ("podman", &["--version"]),
-    ("kubectl", &["version", "--client"]), ("openssl", &["version"]), ("curl", &["--version"]), ("nginx", &["-v"]), ("php", &["--version"]),
-    ("ruby", &["--version"]), ("psql", &["--version"]), ("mysql", &["--version"]), ("redis-server", &["--version"]), ("ssh", &["-V"]),
-    ("systemctl", &["--version"]), ("bash", &["--version"]), ("sqlite3", &["--version"]), ("perl", &["--version"]), ("zsh", &["--version"]), ("fish", &["--version"]),
-];
-
-/// Variables that differ on every login and say nothing about the machine.
-const NOISE: [&str; 12] = ["_", "PWD", "OLDPWD", "SHLVL", "TERM", "COLORTERM", "LS_COLORS", "SSH_TTY", "SSH_CLIENT", "SSH_CONNECTION", "DISPLAY", "WINDOWID"];
-const NOISE_PREFIX: &[&str] = &["INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "SYSTEMD_EXEC_PID", "MEMORY_PRESSURE", "GIO_", "GJS_", "PRESSURE_VESSEL", "QT_", "GDK_", "EGL_", "ELECTRON", "MCP_", "DESKTOP_SESSION", "SSH_AUTH", "XDG_SESSION", "DBUS_", "KITTY_", "WAYLAND_", "TMUX", "LC_", "CLAUDE", "ANTHROPIC", "AI_AGENT", "BAGGAGE", "SENTRY", "VSCODE", "TERM_", "GNOME_", "LIBVA", "NO_AT_BRIDGE", "MOTD"];
-
 /// stdout and stderr of a successful command (java and nginx print their version on stderr).
 fn both(cmd: &str, args: &[&str]) -> Option<String> {
     let o = Command::new(cmd).args(args).env("LC_ALL", "C").output().ok()?;
@@ -37,20 +24,15 @@ pub fn collect() -> Snapshot {
     if let Some(kb) = fs::read_to_string("/proc/meminfo").ok().and_then(|m| m.lines().next()?.split_whitespace().nth(1)?.parse::<u64>().ok()) {
         s.insert("meta/memory".into(), format!("{} GB", (kb + 524_288) / 1_048_576));
     }
-    for (tool, args) in TOOLS {
-        if !pkg::on_path(tool) {
+    for (tool, args) in crate::snapcommon::TOOLS {
+        if !crate::util::on_path(tool) {
             continue;
         }
         if let Some(v) = both(tool, args).and_then(|o| o.lines().find(|l| !l.trim().is_empty()).map(|l| l.trim().chars().take(90).collect::<String>())) {
             s.insert(format!("tool/{tool}"), v);
         }
     }
-    for (k, v) in std::env::vars() {
-        if NOISE.contains(&k.as_str()) || NOISE_PREFIX.iter().any(|p| k.starts_with(p)) {
-            continue;
-        }
-        s.insert(format!("env/{k}"), crate::env::comparable(&k, &v));
-    }
+    crate::snapcommon::env_items(&mut s);
     let ls = sockets::listeners(None);
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();
     let (owners, _) = sockets::owners(&inodes);

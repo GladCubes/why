@@ -1,5 +1,5 @@
 //! Package managers: who owns a file, why a package is installed. Only reads, only through each tool's query commands.
-use crate::util::run;
+use crate::util::{on_path, run};
 use std::path::Path;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -15,10 +15,6 @@ pub fn detect() -> Option<Manager> {
         .into_iter()
         .find(|(bin, _)| on_path(bin))
         .map(|(_, m)| m)
-}
-
-pub fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }
 
 /// The package that owns `path`, with the tool that said so: `(tool, "pkg version")`.

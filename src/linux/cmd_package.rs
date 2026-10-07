@@ -1,9 +1,9 @@
 //! `why package <name>`: why a package is installed (who asked for it, who needs it, when) and, inside a project, why it is a dependency.
-use super::pkg::{self, on_path, Manager};
+use super::pkg::{self, Manager};
+use crate::util::on_path;
 use crate::graph::Node;
 use crate::util::{run, short};
 use std::fs;
-use std::path::Path;
 
 pub fn explain(name: &str) -> Node {
     let mut root = Node::new(format!("PACKAGE {name}"));
@@ -14,7 +14,7 @@ pub fn explain(name: &str) -> Node {
             root.add(Node::new("no known system package manager (dpkg, pacman, rpm, apk) on this machine").unknown());
         }
     }
-    found |= project(&mut root, name);
+    found |= crate::projdeps::project(&mut root, name);
     if !found {
         root.add(Node::new("not installed on the system and not a dependency of the project in this directory").unknown().proof("checked the package manager and the lock files here"));
     }
@@ -132,36 +132,6 @@ fn apk(root: &mut Node, name: &str) -> bool {
     let req: Vec<String> = run("apk", &["info", "-r", name]).map(|o| o.lines().skip(1).map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()).unwrap_or_default();
     root.children.extend(list_node("required by", req, "apk info -r"));
     true
-}
-
-/// The package as a dependency of the project in the current directory (npm, cargo, pip, dotnet).
-fn project(root: &mut Node, name: &str) -> bool {
-    let mut found = false;
-    let mut add = |tool: &str, out: Option<String>, proof: &str| {
-        if let Some(o) = out.filter(|o| !o.trim().is_empty()) {
-            let mut n = Node::new(format!("dependency in this project ({tool})")).proof(proof.to_string());
-            for l in o.lines().take(14) {
-                n.add(Node::new(short(l.trim_end(), 130)));
-            }
-            root.add(n);
-            found = true;
-        }
-    };
-    if Path::new("package-lock.json").exists() && on_path("npm") {
-        add("npm", run("npm", &["explain", name]), "npm explain");
-    }
-    if Path::new("Cargo.lock").exists() && on_path("cargo") {
-        add("cargo", run("cargo", &["tree", "--offline", "-i", name]), "cargo tree -i");
-    }
-    if (Path::new("requirements.txt").exists() || Path::new("pyproject.toml").exists()) && on_path("pip") {
-        add("pip", run("pip", &["show", name]).map(|s| format!("{}\n{}", field(&s, "Version").map(|v| format!("version {v}")).unwrap_or_default(), field(&s, "Required-by").map(|r| format!("required by: {r}")).unwrap_or_default())), "pip show");
-    }
-    if on_path("dotnet") {
-        if let Some(proj) = fs::read_dir(".").ok().and_then(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.ends_with(".csproj") || n.ends_with(".sln"))) {
-            add("dotnet", run("dotnet", &["nuget", "why", &proj, name]), "dotnet nuget why (needs the .NET 10 SDK)");
-        }
-    }
-    found
 }
 
 /// Names for shell completion: installed packages.

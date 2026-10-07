@@ -12,7 +12,7 @@ pub fn parse_def(line: &str) -> Option<(String, String)> {
     if l.starts_with('#') {
         return None;
     }
-    for p in ["export ", "declare -x ", "set -gx ", "set -Ux ", "set -x ", "set -g ", "set -U ", "- ", "Environment=", "SETUVAR "] {
+    for p in ["export ", "declare -x ", "set -gx ", "set -Ux ", "set -x ", "set -g ", "set -U ", "- ", "Environment=", "SETUVAR ", "$env:", "setx ", "set ", "SET "] {
         if let Some(r) = l.strip_prefix(p) {
             l = r.trim_start();
             break;
@@ -76,7 +76,7 @@ pub fn comparable(name: &str, v: &str) -> String {
 }
 
 /// Sensitive values never reach the screen: two characters and the length; in URLs only the password is hidden.
-fn show(name: &str, v: &str) -> String {
+pub fn show(name: &str, v: &str) -> String {
     if secret(name) && !v.is_empty() {
         return format!("{}… ({} characters, hidden)", v.chars().take(2).collect::<String>(), v.chars().count());
     }
@@ -97,7 +97,7 @@ fn is_project_file(n: &str) -> bool {
 }
 
 /// Skipped when walking down: huge or generated directories.
-const SKIP: [&str; 6] = ["node_modules", ".git", "target", "venv", ".venv", "__pycache__"];
+const SKIP: [&str; 12] = ["node_modules", ".git", "target", "venv", ".venv", "__pycache__", "AppData", "$Recycle.Bin", "Windows", "Program Files", "Program Files (x86)", "WinSxS"];
 
 fn scan_dir(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
     for e in fs::read_dir(dir).into_iter().flatten().flatten().take(500) {
@@ -179,7 +179,7 @@ fn definitions(name: Option<&str>, wide: bool) -> Vec<Def> {
                 let Some((n, value)) = parse_def(l) else { continue };
                 // when listing, only names that look like environment variables (the rest is YAML noise)
                 let keep = match name {
-                    Some(w) => n == w,
+                    Some(w) => if cfg!(windows) { n.eq_ignore_ascii_case(w) } else { n == w },
                     None => n.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') || PROXY.contains(&n.as_str()),
                 };
                 if keep {
@@ -221,7 +221,10 @@ pub fn explain(name: &str) -> Node {
             root.add(g);
         }
     }
-    if defs.is_empty() {
+    let extra = crate::platform::extra_env(name);
+    let has_extra = !extra.is_empty();
+    root.children.extend(extra);
+    if defs.is_empty() && !has_extra {
         root.add(Node::new("no definition found in the files checked").unknown().proof("shell files, /etc, ~/.config/fish, .env and compose from here up to home"));
         if current.is_some() {
             root.add(Node::new("yet the variable exists: it comes from a program that started the shell (terminal, graphical session, systemd --user) or from a manual `export`").probable());
@@ -271,6 +274,9 @@ fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     }
     for d in definitions(None, false) {
         m.entry(d.name.clone()).or_default().1.push(format!("{}:{}", d.file.display(), d.line));
+    }
+    for (name, place) in crate::platform::extra_env_names() {
+        m.entry(name).or_default().1.push(place);
     }
     m
 }

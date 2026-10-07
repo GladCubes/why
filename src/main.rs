@@ -5,9 +5,13 @@ mod env;
 mod graph;
 mod kubernetes;
 mod proc;
+mod snapcommon;
+mod projdeps;
 mod tunnel;
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(windows)]
+mod windows;
 mod util;
 
 const HELP: &str = "why: rebuilds where something comes from, with the proof of every step
@@ -56,7 +60,7 @@ fn main() {
             _ => fail("usage: why port list [tcp|udp]"),
         },
         ["port", rest @ ..] => match parse_port(rest) {
-            Ok((proto, p)) => graph::print(&explain_port(p, proto)),
+            Ok((proto, p)) => graph::print(&platform::explain_port(p, proto)),
             Err(e) => fail(&e),
         },
         ["process", x] => graph::print(&platform::explain_process(x)),
@@ -72,7 +76,7 @@ fn main() {
         ["env", x] if is_list(x) => print!("{}", list_env(false)),
         ["env", x, "all" | "--all" | "-a"] if is_list(x) => print!("{}", list_env(true)),
         ["env", "all" | "--all" | "-a"] => print!("{}", list_env(true)),
-        ["env", name] => graph::print(&explain_env(name)),
+        ["env", name] => graph::print(&platform::explain_env(name)),
         _ => fail("unknown command, try `why --help`"),
     }
 }
@@ -106,36 +110,54 @@ fn fail(msg: &str) {
 #[cfg(target_os = "linux")]
 mod platform {
     pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
-    pub use super::linux::hooks::{environ_value, service_consumers, service_env_files, shell_files, wide_roots};
-    pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
     pub use super::linux::cmd_file::explain as explain_file;
-    pub use super::linux::snapshot::collect as snapshot;
     pub use super::linux::cmd_package::{complete as complete_package, explain as explain_package};
     pub use super::linux::cmd_process::{complete as complete_process, explain as explain_process};
     pub use super::linux::cmd_service::{complete as complete_service, explain as explain_service};
+    pub use super::linux::hooks::{environ_value, extra_env, extra_env_names, service_consumers, service_env_files, shell_files, wide_roots};
+    pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
+    pub use super::linux::snapshot::collect as snapshot;
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+mod platform {
+    pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
+    pub use super::windows::cmd_file::explain as explain_file;
+    pub use super::windows::cmd_package::{complete as complete_package, explain as explain_package};
+    pub use super::windows::cmd_port::{complete as complete_port, explain as explain_port, list as list_ports};
+    pub use super::windows::cmd_process::{complete as complete_process, explain as explain_process};
+    pub use super::windows::cmd_service::{complete as complete_service, explain as explain_service};
+    pub use super::windows::hooks::{environ_value, extra_env, extra_env_names, service_consumers, service_env_files, shell_files, wide_roots};
+    pub use super::windows::snapshot::collect as snapshot;
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 mod platform {
     use crate::graph::Node;
-    const MSG: &str = "this platform is not supported yet";
+    use std::path::{Path, PathBuf};
+    const MSG: &str = "this platform is not supported yet (Linux and Windows are)";
+    pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
     pub fn explain_port(_: u16, _: Option<&str>) -> Node { Node::new(MSG).unknown() }
-    pub fn explain_env(_: &str) -> Node { Node::new(MSG).unknown() }
-    pub fn list_ports(_: Option<&str>) -> String { format!("{MSG}\n") }
-    pub fn list_env(_: bool) -> String { format!("{MSG}\n") }
     pub fn explain_process(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn explain_file(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn explain_service(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn explain_package(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn snapshot() -> crate::compare::Snapshot { Default::default() }
-    pub fn complete_package() -> String { String::new() }
+    pub fn list_ports(_: Option<&str>) -> String { format!("{MSG}\n") }
+    pub fn complete_port() -> String { String::new() }
     pub fn complete_process() -> String { String::new() }
     pub fn complete_service() -> String { String::new() }
-    pub fn complete_port() -> String { String::new() }
-    pub fn complete_env() -> String { String::new() }
+    pub fn complete_package() -> String { String::new() }
+    pub fn shell_files() -> Vec<PathBuf> { vec![] }
+    pub fn wide_roots() -> Vec<PathBuf> { vec![] }
+    pub fn service_env_files() -> Vec<PathBuf> { vec![] }
+    pub fn service_consumers(_: &Path, _: &Path) -> Vec<Node> { vec![] }
+    pub fn environ_value(_: u32, _: &str) -> Option<String> { None }
+    pub fn extra_env(_: &str) -> Vec<Node> { vec![] }
+    pub fn extra_env_names() -> Vec<(String, String)> { vec![] }
 }
 
-use platform::{explain_env, explain_port, list_env, list_ports};
+use platform::{list_env, list_ports};
 
 fn complete(what: &str) -> String {
     match what {

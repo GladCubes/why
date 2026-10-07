@@ -40,6 +40,12 @@ pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
+/// Is `bin` an executable on the PATH (with the usual Windows extensions)?
+pub fn on_path(bin: &str) -> bool {
+    let exts: &[&str] = if cfg!(windows) { &["", ".exe", ".cmd", ".bat", ".com"] } else { &[""] };
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| exts.iter().any(|e| d.join(format!("{bin}{e}")).is_file())))
+}
+
 pub fn user_name(uid: u32) -> String {
     fs::read_to_string("/etc/passwd")
         .ok()

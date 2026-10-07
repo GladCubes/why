@@ -82,3 +82,12 @@ pub fn environ_value(pid: u32, name: &str) -> Option<String> {
     let key = format!("{name}=");
     raw.split(|b| *b == 0).find_map(|e| String::from_utf8_lossy(e).strip_prefix(&key).map(String::from))
 }
+
+/// Linux has no registry layers: nothing beyond the files.
+pub fn extra_env(_name: &str) -> Vec<Node> {
+    vec![]
+}
+
+pub fn extra_env_names() -> Vec<(String, String)> {
+    vec![]
+}

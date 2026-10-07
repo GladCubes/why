@@ -1,6 +1,7 @@
 //! The process model shared by every platform; each platform fills it in from its own source (/proc, WMI).
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct Proc {
     pub pid: u32,
     pub ppid: u32,
