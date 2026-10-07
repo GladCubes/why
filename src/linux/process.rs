@@ -3,17 +3,7 @@ use crate::util::user_name;
 use std::fs;
 use std::path::PathBuf;
 
-pub struct Proc {
-    pub pid: u32,
-    pub ppid: u32,
-    pub name: String,
-    pub cmdline: Vec<String>,
-    pub cwd: Option<PathBuf>,
-    pub exe: Option<PathBuf>,
-    pub user: String,
-    /// seconds since the epoch
-    pub started: Option<u64>,
-}
+pub use crate::proc::Proc;
 
 /// Seconds since the epoch at which the system booted.
 fn boot_time() -> Option<u64> {

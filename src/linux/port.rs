@@ -1,6 +1,7 @@
 //! `why port N`: who listens, how it was started, which configuration names the port and what sits in front of it.
 use super::process::{self, Proc};
-use super::{describe, kubernetes, sockets, tunnel};
+use super::{describe, sockets};
+use crate::{kubernetes, tunnel};
 use crate::graph::Node;
 use crate::util::{has_token, run, short};
 

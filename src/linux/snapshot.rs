@@ -49,7 +49,7 @@ pub fn collect() -> Snapshot {
         if NOISE.contains(&k.as_str()) || NOISE_PREFIX.iter().any(|p| k.starts_with(p)) {
             continue;
         }
-        s.insert(format!("env/{k}"), crate::linux::env::comparable(&k, &v));
+        s.insert(format!("env/{k}"), crate::env::comparable(&k, &v));
     }
     let ls = sockets::listeners(None);
     let inodes: Vec<u64> = ls.iter().map(|l| l.inode).collect();

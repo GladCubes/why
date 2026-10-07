@@ -1,5 +1,5 @@
 //! Tunnels and forwards that may carry a port: ssh -L/-R/-D, cloudflared, ngrok & co, tailscale, WireGuard.
-use super::process;
+use crate::proc as process;
 use crate::graph::Node;
 use crate::util::{has_token, home, run, short};
 use std::fs;
@@ -7,6 +7,7 @@ use std::fs;
 const OTHERS: [&str; 7] = ["ngrok", "frpc", "frps", "chisel", "bore", "rathole", "zrok"];
 
 /// WireGuard interface named by a firewall rule: nft `iifname "wg0"` or iptables `-i wg0`.
+#[cfg(target_os = "linux")]
 pub fn wireguard_in(rule: &str) -> Option<String> {
     let name = match rule.split("iifname ").nth(1) {
         Some(r) => r.trim_start_matches(['!', '=', ' ']).trim_start_matches('"').split('"').next()?,
@@ -15,6 +16,7 @@ pub fn wireguard_in(rule: &str) -> Option<String> {
     is_wireguard(name).then(|| name.to_string())
 }
 
+#[cfg(target_os = "linux")]
 fn is_wireguard(name: &str) -> bool {
     fs::read_to_string(format!("/sys/class/net/{name}/uevent")).is_ok_and(|u| u.contains("DEVTYPE=wireguard"))
 }
@@ -36,7 +38,8 @@ pub fn explain(port: u16, via_wg: &[String]) -> Node {
     }
     for pr in process::all() {
         let cmd = pr.cmdline.join(" ");
-        match pr.name.as_str() {
+        let name = process::norm(&pr.name);
+        match name.as_str() {
             "ssh" => ssh_forwards(&pr, &p, &mut n),
             "cloudflared" => cloudflared(&pr, &cmd, &p, &mut n),
             name if OTHERS.contains(&name) && cmd.split_whitespace().any(|a| has_token(a, &p)) => {
@@ -104,7 +107,7 @@ fn cloudflared(pr: &process::Proc, cmd: &str, port: &str, n: &mut Node) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
 

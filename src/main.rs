@@ -1,7 +1,11 @@
 //! why: why is this port open, where does this variable come from? Every step comes with its proof.
 mod compare;
 mod completions;
+mod env;
 mod graph;
+mod kubernetes;
+mod proc;
+mod tunnel;
 #[cfg(target_os = "linux")]
 mod linux;
 mod util;
@@ -101,7 +105,8 @@ fn fail(msg: &str) {
 
 #[cfg(target_os = "linux")]
 mod platform {
-    pub use super::linux::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
+    pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
+    pub use super::linux::hooks::{environ_value, service_consumers, service_env_files, shell_files, wide_roots};
     pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
     pub use super::linux::cmd_file::explain as explain_file;
     pub use super::linux::snapshot::collect as snapshot;
