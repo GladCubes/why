@@ -1,0 +1,64 @@
+# Push a tag like v0.1.0 and this builds the binaries and attaches them to a GitHub Release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  linux:
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-latest, target: x86_64-unknown-linux-musl, arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, arch: aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo test --release
+      - run: cargo build --release --target ${{ matrix.target }}
+      - run: cargo install cargo-deb --locked
+      # the deb asset path is target/release/why: copy the static build there
+      - run: |
+          cp target/${{ matrix.target }}/release/why target/release/why
+          cargo deb --no-build --no-strip --output why-cli_${{ github.ref_name }}_${{ matrix.arch }}.deb
+          tar -C target/${{ matrix.target }}/release -czf why-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz why
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            *.deb
+            *.tar.gz
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --release
+      - run: cargo build --release
+      - run: |
+          Copy-Item target/release/why.exe why-${{ github.ref_name }}-windows-x86_64.exe
+          Compress-Archive -Path target/release/why.exe -DestinationPath why-${{ github.ref_name }}-windows-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            *.exe
+            *.zip
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

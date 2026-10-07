@@ -14,6 +14,16 @@ PORT 8080
         └── ≈ tcp dport 8080 dnat to 172.17.0.2:80  ← nft list ruleset
 ```
 
+## Install
+
+| how | command |
+|---|---|
+| Debian / Ubuntu | download `why-cli_<version>_<arch>.deb` from the [releases](https://github.com/GladCubes/why/releases), then `sudo apt install ./why-cli_*.deb` (also installs the completions) |
+| any Linux | `curl -fsSL https://raw.githubusercontent.com/GladCubes/why/master/install.sh \| sh` (checks the SHA-256 before installing) |
+| Linux, by hand | download `why-<version>-linux-<arch>.tar.gz`: a static binary, no dependencies |
+| Windows | download `why-<version>-windows-x86_64.exe` (or the `.zip`) and put it somewhere in your `PATH` |
+| from source | `cargo install --git https://github.com/GladCubes/why` |
+
 ## Commands
 
 | command | what it rebuilds |

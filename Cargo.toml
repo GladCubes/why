@@ -2,8 +2,13 @@
 name = "why"
 version = "0.1.0"
 edition = "2021"
-description = "Perche' questa cosa e' cosi'? Ricostruisce da dove arriva una porta o una variabile, con la prova di ogni passaggio."
+description = "Why is this port open? Where does this variable come from? Rebuilds the chain with the proof of every step."
 license = "MIT"
+repository = "https://github.com/GladCubes/why"
+homepage = "https://github.com/GladCubes/why"
+readme = "README.md"
+keywords = ["debugging", "provenance", "ports", "environment", "diagnostics"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [dependencies]
 
@@ -11,3 +16,19 @@ license = "MIT"
 opt-level = 3
 lto = true
 strip = true
+
+# `cargo deb` builds a .deb (package name why-cli: Debian already has an unrelated package called "why")
+[package.metadata.deb]
+name = "why-cli"
+section = "utils"
+priority = "optional"
+maintainer = "GladCubes <241511634+GladCubes@users.noreply.github.com>"
+extended-description = "why rebuilds where a port, process, file, service, package or environment variable comes from, and shows the proof of every step. It only reads: it changes nothing."
+conflicts = "why"
+assets = [
+    ["target/release/why", "usr/bin/why", "755"],
+    ["README.md", "usr/share/doc/why-cli/README.md", "644"],
+    ["completions/why.bash", "usr/share/bash-completion/completions/why", "644"],
+    ["completions/why.fish", "usr/share/fish/vendor_completions.d/why.fish", "644"],
+    ["completions/_why", "usr/share/zsh/vendor-completions/_why", "644"],
+]

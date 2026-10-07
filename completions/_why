@@ -1,0 +1,15 @@
+#compdef why
+_why() {
+  if (( CURRENT == 2 )); then
+    compadd port process file service package env snapshot compare completions
+  else
+    case $words[2] in
+      port) compadd list tcp udp ${(f)"$(why __complete port | cut -f1)"} ;;
+      env) compadd list ${(f)"$(why __complete env | cut -f1)"} ;;
+      process|service|package) compadd list ${(f)"$(why __complete $words[2] | cut -f1)"} ;;
+      file|compare) _files ;;
+      completions) compadd fish bash zsh ;;
+    esac
+  fi
+}
+_why "$@"

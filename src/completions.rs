@@ -65,3 +65,16 @@ _why() {
 }
 _why "$@"
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The files shipped in packages (`completions/`) must match what `why completions` prints.
+    #[test]
+    fn packaged_files_match() {
+        assert_eq!(script("bash"), Some(include_str!("../completions/why.bash")));
+        assert_eq!(script("fish"), Some(include_str!("../completions/why.fish")));
+        assert_eq!(script("zsh"), Some(include_str!("../completions/_why")));
+    }
+}

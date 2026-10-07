@@ -1,0 +1,21 @@
+complete -c why -f
+complete -c why -n '__fish_use_subcommand' -a port -d 'Who listens on a port, and why'
+complete -c why -n '__fish_use_subcommand' -a process -d 'Why a process exists'
+complete -c why -n '__fish_use_subcommand' -a file -d 'Where a file comes from and what uses it'
+complete -c why -n '__fish_use_subcommand' -a service -d 'Why a service is running'
+complete -c why -n '__fish_use_subcommand' -a package -d 'Why a package is installed'
+complete -c why -n '__fish_use_subcommand' -a env -d 'Where an environment variable comes from'
+complete -c why -n '__fish_use_subcommand' -a snapshot -d 'A picture of this machine'
+complete -c why -n '__fish_use_subcommand' -a compare -d 'What differs between two machines'
+complete -c why -n '__fish_use_subcommand' -a completions -d 'Print a shell completion script'
+complete -c why -n '__fish_seen_subcommand_from port' -a 'list tcp udp' -d 'List ports / protocol'
+complete -c why -n '__fish_seen_subcommand_from port' -a '(why __complete port)'
+complete -c why -n '__fish_seen_subcommand_from env' -a 'list' -d 'List every variable'
+complete -c why -n '__fish_seen_subcommand_from env' -a '(why __complete env)'
+complete -c why -n '__fish_seen_subcommand_from process service package' -a 'list' -d 'List them all'
+complete -c why -n '__fish_seen_subcommand_from process' -a '(why __complete process)'
+complete -c why -n '__fish_seen_subcommand_from service' -a '(why __complete service)'
+complete -c why -n '__fish_seen_subcommand_from package' -a '(why __complete package)'
+complete -c why -n '__fish_seen_subcommand_from file' -F
+complete -c why -n '__fish_seen_subcommand_from compare' -a 'local' -F
+complete -c why -n '__fish_seen_subcommand_from completions' -a 'fish bash zsh'
