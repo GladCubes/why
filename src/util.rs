@@ -64,7 +64,7 @@ mod tests {
         assert!(!has_token("port: 80801", "8080"));
         assert!(!has_token("ver 1.8080", "8080"));
         assert!(!has_token("http_port", "80"));
-        assert!(has_token("SCPSL -port7777 -id3", "7777"));
+        assert!(has_token("gameserver -port7777 -id3", "7777"));
         assert!(!has_token("x7777", "7777"));
     }
 }

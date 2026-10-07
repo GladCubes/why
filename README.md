@@ -3,15 +3,15 @@
 *Why is this port open? Where does this variable come from?* `why` rebuilds the chain and **shows the proof of every step**.
 
 ```
-$ why port 25565
-PORT 25565
+$ sudo why port 8080
+PORT 8080
 └── process docker-proxy (pid 3173, user root)  ← holds the socket open in /proc/3173/fd
-    ├── listens on: tcp 10.0.35.2:25565         ← /proc/net/* tables
-    ├── forwards to container 172.18.0.2:25565  ← docker-proxy arguments
-    │   └── container 4301460e… (image ghcr.io/pterodactyl/yolks:java_25)  ← docker inspect: same IP
+    ├── listens on: tcp 0.0.0.0:8080            ← /proc/net/* tables
+    ├── forwards to container 172.17.0.2:80     ← docker-proxy arguments
+    │   └── container web (image nginx:1.27)    ← docker inspect: same IP
     ├── systemd service: docker.service         ← cgroup in /proc/3173/cgroup
     └── network in front of the process
-        └── ≈ ip daddr 10.0.35.2 tcp dport 25565 dnat to 172.18.0.2:25565  ← nft list ruleset
+        └── ≈ tcp dport 8080 dnat to 172.17.0.2:80  ← nft list ruleset
 ```
 
 ## Commands
