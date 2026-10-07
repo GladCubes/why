@@ -9,7 +9,15 @@ pub struct Proc {
     pub name: String,
     pub cmdline: Vec<String>,
     pub cwd: Option<PathBuf>,
+    pub exe: Option<PathBuf>,
     pub user: String,
+    /// seconds since the epoch
+    pub started: Option<u64>,
+}
+
+/// Seconds since the epoch at which the system booted.
+fn boot_time() -> Option<u64> {
+    fs::read_to_string("/proc/stat").ok()?.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())
 }
 
 pub fn read(pid: u32) -> Option<Proc> {
@@ -23,13 +31,17 @@ pub fn read(pid: u32) -> Option<Proc> {
         .ok()
         .and_then(|s| s.lines().find(|l| l.starts_with("Uid:"))?.split_whitespace().nth(1)?.parse().ok())
         .unwrap_or(0);
+    // field 22 of stat: start time in clock ticks since boot (100 per second on every mainstream Linux)
+    let started = stat[close + 2..].split_whitespace().nth(19).and_then(|s| s.parse::<u64>().ok()).and_then(|ticks| Some(boot_time()? + ticks / 100));
     Some(Proc {
         pid,
         ppid,
         name: stat[open + 1..close].to_string(),
         cmdline,
         cwd: fs::read_link(format!("/proc/{pid}/cwd")).ok(),
+        exe: fs::read_link(format!("/proc/{pid}/exe")).ok(),
         user: user_name(uid),
+        started,
     })
 }
 
@@ -43,6 +55,11 @@ pub fn ancestors(pid: u32) -> Vec<Proc> {
         out.push(p);
     }
     out
+}
+
+/// Direct children of `pid`.
+pub fn children(pid: u32) -> Vec<Proc> {
+    all().into_iter().filter(|p| p.ppid == pid).collect()
 }
 
 /// Every process that can be read.

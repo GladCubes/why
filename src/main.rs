@@ -1,4 +1,5 @@
 //! why: why is this port open, where does this variable come from? Every step comes with its proof.
+mod compare;
 mod completions;
 mod graph;
 #[cfg(target_os = "linux")]
@@ -12,6 +13,13 @@ USAGE
                             what sits in front of it (firewall, containers, tunnels)
   why port udp <N>          only that protocol; also `tcp 7777`, `7777/udp`, `udp:7777`
   why port list [tcp|udp]   every listening port and its process
+  why process <pid|name>    why a process exists: what runs it, since when, who started it, what it listens on
+  why file <path>           where a file comes from (package, owner) and what uses it (processes, libraries, units, cron)
+  why package <name>        why a package is installed: on purpose or as a dependency, who needs it, when and by which command
+  why service <name>        why a systemd service is running: state, how it is enabled, who wants it, what it runs
+  why snapshot              a picture of this machine (tools, env, ports, services, packages) as text
+  why compare <A> <B>       what differs between two machines: a snapshot file, `local`, or a host reachable
+                            over ssh that also has why (`why compare local web01`)
   why env <NAME>            where a variable is defined and which value it has now
   why env <file>[:line]     the variables a file defines; or the variable a given line defines, and where else it is set
   why env list              variables defined in the project (.env, docker-compose), with where
@@ -47,6 +55,15 @@ fn main() {
             Ok((proto, p)) => graph::print(&explain_port(p, proto)),
             Err(e) => fail(&e),
         },
+        ["process", x] => graph::print(&platform::explain_process(x)),
+        ["file", x] => graph::print(&platform::explain_file(x)),
+        ["snapshot"] => print!("{}", compare::serialize(&platform::snapshot())),
+        ["compare", a, b] => match (compare::fetch(a, platform::snapshot), compare::fetch(b, platform::snapshot)) {
+            (Ok(x), Ok(y)) => graph::print(&compare::compare(&x, a, &y, b)),
+            (Err(e), _) | (_, Err(e)) => fail(&e),
+        },
+        ["package", x] => graph::print(&platform::explain_package(x)),
+        ["service", x] => graph::print(&platform::explain_service(x)),
         ["env"] => print!("{}", list_env(false)),
         ["env", x] if is_list(x) => print!("{}", list_env(false)),
         ["env", x, "all" | "--all" | "-a"] if is_list(x) => print!("{}", list_env(true)),
@@ -86,6 +103,11 @@ fn fail(msg: &str) {
 mod platform {
     pub use super::linux::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
     pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
+    pub use super::linux::cmd_file::explain as explain_file;
+    pub use super::linux::snapshot::collect as snapshot;
+    pub use super::linux::cmd_package::{complete as complete_package, explain as explain_package};
+    pub use super::linux::cmd_process::{complete as complete_process, explain as explain_process};
+    pub use super::linux::cmd_service::{complete as complete_service, explain as explain_service};
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -96,6 +118,14 @@ mod platform {
     pub fn explain_env(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn list_ports(_: Option<&str>) -> String { format!("{MSG}\n") }
     pub fn list_env(_: bool) -> String { format!("{MSG}\n") }
+    pub fn explain_process(_: &str) -> Node { Node::new(MSG).unknown() }
+    pub fn explain_file(_: &str) -> Node { Node::new(MSG).unknown() }
+    pub fn explain_service(_: &str) -> Node { Node::new(MSG).unknown() }
+    pub fn explain_package(_: &str) -> Node { Node::new(MSG).unknown() }
+    pub fn snapshot() -> crate::compare::Snapshot { Default::default() }
+    pub fn complete_package() -> String { String::new() }
+    pub fn complete_process() -> String { String::new() }
+    pub fn complete_service() -> String { String::new() }
     pub fn complete_port() -> String { String::new() }
     pub fn complete_env() -> String { String::new() }
 }
@@ -106,6 +136,9 @@ fn complete(what: &str) -> String {
     match what {
         "port" => platform::complete_port(),
         "env" => platform::complete_env(),
+        "process" => platform::complete_process(),
+        "service" => platform::complete_service(),
+        "package" => platform::complete_package(),
         _ => String::new(),
     }
 }

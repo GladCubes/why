@@ -35,7 +35,8 @@ pub fn short(s: &str, n: usize) -> String {
 
 /// Runs a command and returns its output if it succeeded (None if it is missing or fails).
 pub fn run(cmd: &str, args: &[&str]) -> Option<String> {
-    let o = Command::new(cmd).args(args).output().ok()?;
+    // fixed locale: the tools' output is parsed, and a translated one ("Versione", "Motivo...") would not match
+    let o = Command::new(cmd).args(args).env("LC_ALL", "C").env("LANGUAGE", "C").output().ok()?;
     o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
@@ -49,6 +50,46 @@ pub fn user_name(uid: u32) -> String {
         .unwrap_or_else(|| uid.to_string())
 }
 
+pub fn group_name(gid: u32) -> String {
+    fs::read_to_string("/etc/group")
+        .ok()
+        .and_then(|t| t.lines().find_map(|l| {
+            let f: Vec<&str> = l.split(':').collect();
+            (f.len() > 2 && f[2].parse() == Ok(gid)).then(|| f[0].to_string())
+        }))
+        .unwrap_or_else(|| gid.to_string())
+}
+
+/// "3 days 4 h", "12 min", "40 s"
+pub fn ago(secs: u64) -> String {
+    match secs {
+        0..=89 => format!("{secs} s"),
+        90..=5399 => format!("{} min", secs / 60),
+        5400..=172_799 => format!("{} h {} min", secs / 3600, secs % 3600 / 60),
+        _ => format!("{} days {} h", secs / 86400, secs % 86400 / 3600),
+    }
+}
+
+/// UTC date and time like "2026-10-07 14:30" from epoch seconds (no time zone database needed).
+pub fn date(epoch: u64) -> String {
+    let (days, rem) = (epoch / 86400, epoch % 86400);
+    // civil-from-days (Howard Hinnant)
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02} UTC", rem / 3600, rem % 3600 / 60)
+}
+
+pub fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
 pub fn home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(Into::into)
 }
@@ -56,6 +97,15 @@ pub fn home() -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_time() {
+        assert_eq!(date(0), "1970-01-01 00:00 UTC");
+        assert_eq!(date(1_791_372_845), "2026-10-07 11:34 UTC");
+        assert_eq!(ago(45), "45 s");
+        assert_eq!(ago(7200), "2 h 0 min");
+        assert_eq!(ago(3 * 86400 + 4 * 3600), "3 days 4 h");
+    }
 
     #[test]
     fn token_is_whole_word() {

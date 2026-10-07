@@ -1,7 +1,14 @@
+pub mod cmd_file;
+pub mod cmd_package;
+pub mod cmd_process;
+pub mod cmd_service;
+pub mod describe;
 pub mod env;
 pub mod kubernetes;
+pub mod pkg;
 pub mod port;
 pub mod process;
+pub mod snapshot;
 pub mod sockets;
 pub mod tunnel;
 pub mod unit;

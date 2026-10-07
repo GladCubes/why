@@ -86,6 +86,15 @@ fn secret(name: &str) -> bool {
     ["KEY", "TOKEN", "SECRET", "PASS", "PWD", "AUTH", "SALT", "PRIVATE", "CRED", "SIGN"].iter().any(|k| n.contains(k))
 }
 
+/// A value that can be compared across machines without leaking it: secrets become a short hash of themselves.
+pub fn comparable(name: &str, v: &str) -> String {
+    if !secret(name) {
+        return v.to_string();
+    }
+    let h = v.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+    format!("(secret, fingerprint {:08x})", h >> 32)
+}
+
 /// Sensitive values never reach the screen: two characters and the length; in URLs only the password is hidden.
 fn show(name: &str, v: &str) -> String {
     if secret(name) && !v.is_empty() {
@@ -401,6 +410,15 @@ mod tests {
         assert_eq!(def("export FOOBAR=1", "FOO"), None);
         assert_eq!(def("FOO = bar", "FOO").as_deref(), Some("bar"));
         assert_eq!(def("export FOO='it works'", "FOO").as_deref(), Some("it works"));
+    }
+
+    #[test]
+    fn secrets_compare_without_leaking() {
+        let (a, b) = (comparable("API_TOKEN", "abc"), comparable("API_TOKEN", "abd"));
+        assert_ne!(a, b);
+        assert_eq!(a, comparable("API_TOKEN", "abc"));
+        assert!(!a.contains("abc"));
+        assert_eq!(comparable("PORT", "80"), "80");
     }
 
     #[test]

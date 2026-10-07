@@ -54,6 +54,19 @@ fn parse_ip(hex: &str) -> Option<String> {
     }
 }
 
+/// The listening sockets a process holds (readable only for your own processes, or as root).
+pub fn of_pid(pid: u32) -> Vec<Listener> {
+    let Ok(fds) = fs::read_dir(format!("/proc/{pid}/fd")) else { return vec![] };
+    let inodes: Vec<u64> = fds
+        .flatten()
+        .filter_map(|fd| fs::read_link(fd.path()).ok()?.to_string_lossy().strip_prefix("socket:[")?.strip_suffix(']')?.parse().ok())
+        .collect();
+    if inodes.is_empty() {
+        return vec![];
+    }
+    listeners(None).into_iter().filter(|l| inodes.contains(&l.inode)).collect()
+}
+
 /// For each inode, the processes that hold that socket open. The second value counts processes I could not read.
 pub fn owners(inodes: &[u64]) -> (HashMap<u64, Vec<u32>>, usize) {
     let mut map: HashMap<u64, Vec<u32>> = HashMap::new();
