@@ -1,4 +1,5 @@
 //! `why env NAME`: where a variable is defined (shell files, system, .env, compose) and which value it has now.
+use super::process;
 use crate::graph::Node;
 use crate::util::{home, short};
 use std::collections::BTreeMap;
@@ -68,8 +69,8 @@ fn list(dir: &str, keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
 fn is_project_file(n: &str) -> bool {
     let compose = (n.starts_with("docker-compose") || n.starts_with("compose.")) && (n.ends_with(".yml") || n.ends_with(".yaml"));
     // backups and templates are not loaded by anything
-    let spare = [".example", ".sample", ".orig", ".old", ".save", "~"].iter().any(|s| n.ends_with(s)) || n.contains(".bak");
-    (n.starts_with(".env") && !spare) || compose
+    let spare = [".example", ".sample", ".orig", ".old", ".save", ".bak", "~"].iter().any(|s| n.contains(s));
+    (n.starts_with(".env") || compose) && !spare
 }
 
 /// Skipped when walking down: huge or generated directories.
@@ -99,7 +100,59 @@ fn project_files() -> Vec<PathBuf> {
 }
 
 const SHELL_NOTE: &str = "read when the shell starts or at login";
+const SERVICE_NOTE: &str = "read by systemd for that service, not by the shell";
 const PROJECT_NOTE: &str = "NOT read by the shell: only applies to programs that load it (dotenv, docker compose, ...)";
+
+/// Everywhere on the machine a project or a service may keep variables: the usual roots, the directories of running
+/// processes, and the systemd units (with the EnvironmentFile= they point to).
+fn wide_files() -> Vec<(&'static str, PathBuf)> {
+    let mut proj = vec![];
+    let mut roots: Vec<PathBuf> = ["/opt", "/srv", "/var/www", "/root"].map(PathBuf::from).to_vec();
+    roots.extend(fs::read_dir("/home").into_iter().flatten().flatten().map(|e| e.path()));
+    for r in &roots {
+        scan_dir(r, 3, &mut proj);
+    }
+    for c in process::all().into_iter().filter_map(|p| p.cwd).filter(|c| c != Path::new("/")) {
+        scan_dir(&c, 1, &mut proj);
+    }
+    let mut out: Vec<(&str, PathBuf)> = proj.into_iter().map(|f| (PROJECT_NOTE, f)).collect();
+    for e in fs::read_dir("/etc/systemd/system").into_iter().flatten().flatten() {
+        let (path, n) = (e.path(), e.file_name().to_string_lossy().into_owned());
+        let mut units = vec![];
+        if n.ends_with(".service") && path.is_file() {
+            units.push(path.clone());
+        }
+        if n.ends_with(".service.d") {
+            units.extend(fs::read_dir(&path).into_iter().flatten().flatten().map(|x| x.path()));
+        }
+        for u in units {
+            for l in fs::read_to_string(&u).unwrap_or_default().lines() {
+                if let Some(f) = l.trim().strip_prefix("EnvironmentFile=") {
+                    out.push((SERVICE_NOTE, PathBuf::from(f.trim_start_matches('-'))));
+                }
+            }
+            out.push((SERVICE_NOTE, u));
+        }
+    }
+    out
+}
+
+/// True when nothing near you defines the variable(s): the search then widens to the whole machine.
+fn needs_wide(name: Option<&str>) -> bool {
+    definitions(name, false).iter().all(|d| d.note == SHELL_NOTE)
+}
+
+fn sources(wide: bool) -> Vec<(&'static str, PathBuf)> {
+    let mut v: Vec<(&str, PathBuf)> = shell_files().into_iter().map(|f| (SHELL_NOTE, f)).collect();
+    if wide {
+        v.extend(wide_files());
+    } else {
+        v.extend(project_files().into_iter().map(|f| (PROJECT_NOTE, f)));
+    }
+    let mut seen = vec![];
+    v.retain(|(_, f)| !seen.contains(f) && { seen.push(f.clone()); true });
+    v
+}
 
 struct Def {
     note: &'static str,
@@ -110,10 +163,10 @@ struct Def {
 }
 
 /// Every definition found in the known files (only `name` if given).
-fn definitions(name: Option<&str>) -> Vec<Def> {
+fn definitions(name: Option<&str>, wide: bool) -> Vec<Def> {
     let mut out = vec![];
-    for (note, files) in [(SHELL_NOTE, shell_files()), (PROJECT_NOTE, project_files())] {
-        for file in files {
+    for (note, file) in sources(wide) {
+        {
             let Ok(text) = fs::read_to_string(&file) else { continue };
             for (i, l) in text.lines().enumerate() {
                 let Some((n, value)) = parse_def(l) else { continue };
@@ -137,9 +190,13 @@ pub fn explain(name: &str) -> Node {
         Some(v) => Node::new(format!("VARIABLE {name} = {}", show(name, v))).proof("environment of the `why` process, i.e. your shell's"),
         None => Node::new(format!("VARIABLE {name}: not set in the current environment")).proof("environment of the `why` process"),
     };
-    let defs = definitions(Some(name));
-    for note in [SHELL_NOTE, PROJECT_NOTE] {
-        let mut g = Node::new(if note == SHELL_NOTE { "shell and system files" } else { "project files" });
+    let wide = needs_wide(Some(name));
+    let defs = definitions(Some(name), wide);
+    if wide && defs.iter().any(|d| d.note != SHELL_NOTE) {
+        root.add(Node::new("not defined near here: searched the whole machine (/opt, /srv, /var/www, home directories, running services, systemd units)").unknown());
+    }
+    for note in [SHELL_NOTE, PROJECT_NOTE, SERVICE_NOTE] {
+        let mut g = Node::new(match note { SHELL_NOTE => "shell and system files", PROJECT_NOTE => "project files", _ => "systemd services" });
         for d in defs.iter().filter(|d| d.note == note) {
             let same = current.as_deref() == Some(d.value.as_str());
             let label = format!("{}:{}  =  {}{}", d.file.display(), d.line, show(name, &d.value), if same { "   ← same value as the current environment" } else { "" });
@@ -167,7 +224,7 @@ fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     for (k, v) in std::env::vars() {
         m.entry(k).or_default().0 = Some(v);
     }
-    for d in definitions(None) {
+    for d in definitions(None, false) {
         m.entry(d.name.clone()).or_default().1.push(format!("{}:{}", d.file.display(), d.line));
     }
     m
@@ -191,33 +248,38 @@ pub fn list_all(all: bool) -> String {
     out
 }
 
-fn project_names() -> BTreeMap<String, Vec<Def>> {
+fn project_names(wide: bool) -> BTreeMap<String, Vec<Def>> {
     let mut m: BTreeMap<String, Vec<Def>> = BTreeMap::new();
-    for d in definitions(None).into_iter().filter(|d| d.note == PROJECT_NOTE) {
+    for d in definitions(None, wide).into_iter().filter(|d| d.note != SHELL_NOTE) {
         m.entry(d.name.clone()).or_default().push(d);
     }
     m
 }
 
 fn list_project() -> String {
-    let names = project_names();
+    let wide = needs_wide(None);
+    let names = project_names(wide);
     if names.is_empty() {
-        return "No .env or docker-compose files found here (two levels down, and in the directories above up to your home).\nRun it inside a project, or use `why env list all` for the shell and system variables.\n".into();
+        return "No .env, docker-compose or systemd Environment files found on this machine.\nUse `why env list all` for the shell and system variables.\n".into();
     }
-    let mut out = format!("{:<28} {:<38} {}\n", "NAME", "VALUE", "DEFINED IN");
+    let mut out = String::new();
+    if wide {
+        out.push_str("No project files near here: showing every .env / docker-compose / systemd service file found on this machine.\nRun it inside a project directory to see just that project.\n\n");
+    }
+    out.push_str(&format!("{:<28} {:<38} {}\n", "NAME", "VALUE", "DEFINED IN"));
     for (name, defs) in names {
         let differ = defs.iter().any(|d| d.value != defs[0].value);
         let places = defs.iter().map(|d| format!("{}:{}", d.file.display(), d.line)).collect::<Vec<_>>();
         let w = if places.len() > 2 { format!("{}, +{} more", places[..2].join(", "), places.len() - 2) } else { places.join(", ") };
         out.push_str(&format!("{:<28} {:<38} {w}{}\n", short(&name, 27), short(&show(&name, &defs[0].value), 37), if differ { "   ≠ values differ between files" } else { "" }));
     }
-    out.push_str("\nProject files only. `why env list all` adds the shell and system environment.\n");
+    out.push_str("\nProject and service files only. `why env list all` adds the shell and system environment.\n");
     out
 }
 
 /// Names for shell completion: the project's variables if there are any, otherwise everything.
 pub fn complete() -> String {
-    let project = project_names();
+    let project = project_names(needs_wide(None));
     if !project.is_empty() {
         return project.keys().map(|n| format!("{n}\tproject file\n")).collect();
     }
