@@ -12,7 +12,8 @@ USAGE
                             what sits in front of it (firewall, containers, tunnels)
   why port list             every listening port and its process
   why env <NAME>            where a variable is defined and which value it has now
-  why env list              every variable, with where it is defined
+  why env list              variables defined in the project (.env, docker-compose), with where
+  why env list all          the same plus the shell and system environment
   why completions <shell>   completion script for fish, bash or zsh
 
 LEGEND
@@ -40,8 +41,10 @@ fn main() {
             Ok(p) if p > 0 => graph::print(&explain_port(p)),
             _ => fail(&format!("`{n}` is not a valid port (1-65535)")),
         },
-        ["env"] => print!("{}", list_env()),
-        ["env", x] if is_list(x) => print!("{}", list_env()),
+        ["env"] => print!("{}", list_env(false)),
+        ["env", x] if is_list(x) => print!("{}", list_env(false)),
+        ["env", x, "all" | "--all" | "-a"] if is_list(x) => print!("{}", list_env(true)),
+        ["env", "all" | "--all" | "-a"] => print!("{}", list_env(true)),
         ["env", name] => graph::print(&explain_env(name)),
         _ => fail("unknown command, try `why --help`"),
     }
@@ -65,7 +68,7 @@ mod platform {
     pub fn explain_port(_: u16) -> Node { Node::new(MSG).unknown() }
     pub fn explain_env(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn list_ports() -> String { format!("{MSG}\n") }
-    pub fn list_env() -> String { format!("{MSG}\n") }
+    pub fn list_env(_: bool) -> String { format!("{MSG}\n") }
     pub fn complete_port() -> String { String::new() }
     pub fn complete_env() -> String { String::new() }
 }

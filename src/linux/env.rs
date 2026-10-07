@@ -65,22 +65,33 @@ fn list(dir: &str, keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
     v
 }
 
-/// .env and compose files in the current directory and the ones above it, up to home.
+fn is_project_file(n: &str) -> bool {
+    let compose = (n.starts_with("docker-compose") || n.starts_with("compose.")) && (n.ends_with(".yml") || n.ends_with(".yaml"));
+    (n.starts_with(".env") && !n.ends_with(".example") && !n.ends_with(".sample")) || compose
+}
+
+/// Skipped when walking down: huge or generated directories.
+const SKIP: [&str; 6] = ["node_modules", ".git", "target", "venv", ".venv", "__pycache__"];
+
+fn scan_dir(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
+    for e in fs::read_dir(dir).into_iter().flatten().flatten().take(500) {
+        let (path, n) = (e.path(), e.file_name().to_string_lossy().into_owned());
+        if path.is_file() && is_project_file(&n) && !out.contains(&path) {
+            out.push(path);
+        } else if depth > 0 && path.is_dir() && !SKIP.contains(&n.as_str()) && !n.starts_with('.') {
+            scan_dir(&path, depth - 1, out);
+        }
+    }
+}
+
+/// .env and compose files: in the current directory and two levels below it, then in every directory above it up to home.
 fn project_files() -> Vec<PathBuf> {
     let mut out = vec![];
     let Ok(mut dir) = std::env::current_dir() else { return out };
+    scan_dir(&dir, 2, &mut out);
     let stop = home();
-    loop {
-        for e in fs::read_dir(&dir).into_iter().flatten().flatten().take(500) {
-            let n = e.file_name().to_string_lossy().into_owned();
-            let compose = (n.starts_with("docker-compose") || n.starts_with("compose.")) && (n.ends_with(".yml") || n.ends_with(".yaml"));
-            if (n.starts_with(".env") || compose) && e.path().is_file() {
-                out.push(e.path());
-            }
-        }
-        if Some(&dir) == stop.as_ref() || !dir.pop() || dir == Path::new("/") {
-            break;
-        }
+    while Some(&dir) != stop.as_ref() && dir.pop() && dir != Path::new("/") {
+        scan_dir(&dir, 0, &mut out);
     }
     out
 }
@@ -160,8 +171,11 @@ fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     m
 }
 
-/// `why env list`: every variable in the environment plus those defined in files but not loaded now.
-pub fn list_all() -> String {
+/// `why env list`: the variables defined in project files (.env, compose); with `all`, also the shell and the system.
+pub fn list_all(all: bool) -> String {
+    if !all {
+        return list_project();
+    }
     let mut out = format!("{:<32} {:<40} {}\n", "NAME", "VALUE", "DEFINED IN");
     for (name, (value, files)) in all_names() {
         let v = value.map(|v| show(&name, &v).replace('\n', " ")).unwrap_or_else(|| "(not set now)".into());
@@ -175,8 +189,36 @@ pub fn list_all() -> String {
     out
 }
 
-/// Names for shell completion: `NAME\twhere`.
+fn project_names() -> BTreeMap<String, Vec<Def>> {
+    let mut m: BTreeMap<String, Vec<Def>> = BTreeMap::new();
+    for d in definitions(None).into_iter().filter(|d| d.note == PROJECT_NOTE) {
+        m.entry(d.name.clone()).or_default().push(d);
+    }
+    m
+}
+
+fn list_project() -> String {
+    let names = project_names();
+    if names.is_empty() {
+        return "No .env or docker-compose files found here (two levels down, and in the directories above up to your home).\nRun it inside a project, or use `why env list all` for the shell and system variables.\n".into();
+    }
+    let mut out = format!("{:<28} {:<38} {}\n", "NAME", "VALUE", "DEFINED IN");
+    for (name, defs) in names {
+        let differ = defs.iter().any(|d| d.value != defs[0].value);
+        let places = defs.iter().map(|d| format!("{}:{}", d.file.display(), d.line)).collect::<Vec<_>>();
+        let w = if places.len() > 2 { format!("{}, +{} more", places[..2].join(", "), places.len() - 2) } else { places.join(", ") };
+        out.push_str(&format!("{:<28} {:<38} {w}{}\n", short(&name, 27), short(&show(&name, &defs[0].value), 37), if differ { "   ≠ values differ between files" } else { "" }));
+    }
+    out.push_str("\nProject files only. `why env list all` adds the shell and system environment.\n");
+    out
+}
+
+/// Names for shell completion: the project's variables if there are any, otherwise everything.
 pub fn complete() -> String {
+    let project = project_names();
+    if !project.is_empty() {
+        return project.keys().map(|n| format!("{n}\tproject file\n")).collect();
+    }
     all_names().into_iter().map(|(n, (v, f))| format!("{n}\t{}\n", if v.is_some() { "environment" } else if f.is_empty() { "" } else { "defined in files" })).collect()
 }
 
