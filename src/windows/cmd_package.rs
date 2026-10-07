@@ -52,3 +52,13 @@ Get-AppxPackage "*$n*" | % {{ "appx`t$($_.Name)`t$($_.Version)`t$($_.Publisher)`
 pub fn complete() -> String {
     ps(r#"$keys='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'; Get-ItemProperty $keys | ? { $_.DisplayName } | % { ($_.DisplayName -replace ' ','_') }"#).unwrap_or_default().lines().map(|l| format!("{}\n", l.trim())).collect()
 }
+
+/// `why package list`
+pub fn list() -> String {
+    let mut out = format!("{:<56} {}\n", "PROGRAM", "VERSION");
+    let rs = ps(r#"$keys='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'; Get-ItemProperty $keys | ? { $_.DisplayName } | sort DisplayName | % { "{0}`t{1}" -f $_.DisplayName,$_.DisplayVersion }"#).unwrap_or_default();
+    for r in rows(&rs).iter().filter(|r| r.len() >= 2) {
+        out.push_str(&format!("{:<56} {}\n", short(&r[0], 55), r[1]));
+    }
+    out
+}

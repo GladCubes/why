@@ -21,6 +21,7 @@ USAGE
                             what sits in front of it (firewall, containers, tunnels)
   why port udp <N>          only that protocol; also `tcp 7777`, `7777/udp`, `udp:7777`
   why port list [tcp|udp]   every listening port and its process
+  why process list          every process with its pid (also `why service list`, `why package list`)
   why process <pid|name>    why a process exists: what runs it, since when, who started it, what it listens on
   why file <path>           where a file comes from (package, owner) and what uses it (processes, libraries, units, cron)
   why package <name>        why a package is installed: on purpose or as a dependency, who needs it, when and by which command
@@ -52,30 +53,36 @@ fn main() {
             Some(s) => print!("{s}"),
             None => fail("supported shells: fish, bash, zsh"),
         },
-        ["__complete", what] => print!("{}", complete(what)),
-        ["port"] => print!("{}", list_ports(None)),
+        ["__complete", what] => emit(&complete(what)),
+        ["port"] => emit(&list_ports(None)),
         ["port", x, rest @ ..] if is_list(x) => match rest {
-            [] => print!("{}", list_ports(None)),
-            [pr] if proto_of(pr).is_some() => print!("{}", list_ports(proto_of(pr))),
+            [] => emit(&list_ports(None)),
+            [pr] if proto_of(pr).is_some() => emit(&list_ports(proto_of(pr))),
             _ => fail("usage: why port list [tcp|udp]"),
         },
         ["port", rest @ ..] => match parse_port(rest) {
             Ok((proto, p)) => graph::print(&platform::explain_port(p, proto)),
             Err(e) => fail(&e),
         },
+        ["process"] => emit(&platform::list_process()),
+        ["process", x] if is_list(x) => emit(&platform::list_process()),
+        ["service"] => emit(&platform::list_service()),
+        ["service", x] if is_list(x) => emit(&platform::list_service()),
+        ["package"] => emit(&platform::list_package()),
+        ["package", x] if is_list(x) => emit(&platform::list_package()),
         ["process", x] => graph::print(&platform::explain_process(x)),
         ["file", x] => graph::print(&platform::explain_file(x)),
-        ["snapshot"] => print!("{}", compare::serialize(&platform::snapshot())),
+        ["snapshot"] => emit(&compare::serialize(&platform::snapshot())),
         ["compare", a, b] => match (compare::fetch(a, platform::snapshot), compare::fetch(b, platform::snapshot)) {
             (Ok(x), Ok(y)) => graph::print(&compare::compare(&x, a, &y, b)),
             (Err(e), _) | (_, Err(e)) => fail(&e),
         },
         ["package", x] => graph::print(&platform::explain_package(x)),
         ["service", x] => graph::print(&platform::explain_service(x)),
-        ["env"] => print!("{}", list_env(false)),
-        ["env", x] if is_list(x) => print!("{}", list_env(false)),
-        ["env", x, "all" | "--all" | "-a"] if is_list(x) => print!("{}", list_env(true)),
-        ["env", "all" | "--all" | "-a"] => print!("{}", list_env(true)),
+        ["env"] => emit(&list_env(false)),
+        ["env", x] if is_list(x) => emit(&list_env(false)),
+        ["env", x, "all" | "--all" | "-a"] if is_list(x) => emit(&list_env(true)),
+        ["env", "all" | "--all" | "-a"] => emit(&list_env(true)),
         ["env", name] => graph::print(&platform::explain_env(name)),
         _ => fail("unknown command, try `why --help`"),
     }
@@ -102,6 +109,12 @@ fn parse_port(args: &[&str]) -> Result<(Option<&'static str>, u16), String> {
     port.map(|p| (proto, p)).ok_or_else(|| "usage: why port <N> (or `why port list`)".to_string())
 }
 
+/// Prints through one write so a closed pipe (`why process list | head`) ends quietly instead of panicking.
+fn emit(s: &str) {
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(s.as_bytes());
+}
+
 fn fail(msg: &str) {
     eprintln!("why: {msg}");
     std::process::exit(2);
@@ -111,9 +124,9 @@ fn fail(msg: &str) {
 mod platform {
     pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
     pub use super::linux::cmd_file::explain as explain_file;
-    pub use super::linux::cmd_package::{complete as complete_package, explain as explain_package};
-    pub use super::linux::cmd_process::{complete as complete_process, explain as explain_process};
-    pub use super::linux::cmd_service::{complete as complete_service, explain as explain_service};
+    pub use super::linux::cmd_package::{complete as complete_package, explain as explain_package, list as list_package};
+    pub use super::linux::cmd_process::{complete as complete_process, explain as explain_process, list as list_process};
+    pub use super::linux::cmd_service::{complete as complete_service, explain as explain_service, list as list_service};
     pub use super::linux::hooks::{environ_value, extra_env, extra_env_names, service_consumers, service_env_files, shell_files, wide_roots};
     pub use super::linux::port::{complete as complete_port, explain as explain_port, list as list_ports};
     pub use super::linux::snapshot::collect as snapshot;
@@ -123,10 +136,10 @@ mod platform {
 mod platform {
     pub use super::env::{complete as complete_env, explain_arg as explain_env, list_all as list_env};
     pub use super::windows::cmd_file::explain as explain_file;
-    pub use super::windows::cmd_package::{complete as complete_package, explain as explain_package};
+    pub use super::windows::cmd_package::{complete as complete_package, explain as explain_package, list as list_package};
     pub use super::windows::cmd_port::{complete as complete_port, explain as explain_port, list as list_ports};
-    pub use super::windows::cmd_process::{complete as complete_process, explain as explain_process};
-    pub use super::windows::cmd_service::{complete as complete_service, explain as explain_service};
+    pub use super::windows::cmd_process::{complete as complete_process, explain as explain_process, list as list_process};
+    pub use super::windows::cmd_service::{complete as complete_service, explain as explain_service, list as list_service};
     pub use super::windows::hooks::{environ_value, extra_env, extra_env_names, service_consumers, service_env_files, shell_files, wide_roots};
     pub use super::windows::snapshot::collect as snapshot;
 }
@@ -142,6 +155,9 @@ mod platform {
     pub fn explain_file(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn explain_service(_: &str) -> Node { Node::new(MSG).unknown() }
     pub fn explain_package(_: &str) -> Node { Node::new(MSG).unknown() }
+    pub fn list_process() -> String { format!("{MSG}\n") }
+    pub fn list_service() -> String { format!("{MSG}\n") }
+    pub fn list_package() -> String { format!("{MSG}\n") }
     pub fn snapshot() -> crate::compare::Snapshot { Default::default() }
     pub fn list_ports(_: Option<&str>) -> String { format!("{MSG}\n") }
     pub fn complete_port() -> String { String::new() }

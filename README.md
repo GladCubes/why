@@ -20,6 +20,7 @@ PORT 8080
 |---|---|
 | `why port <N>` | who listens, how it was started (service, container, tmux, terminal), the config that names the port, the firewall rules, port forwards and tunnels in front of it. `why port udp 7777`, `7777/tcp`, `tcp:7777` filter by protocol |
 | `why port list [tcp\|udp]` | every listening port with its process |
+| `why process list` (also `service list`, `package list`) | every process with its pid, every service with its state and boot setting, every installed package with its version |
 | `why process <pid\|name>` | why a process exists: command, since when, executable (package or publisher, signature), who started it, what manages it, what it listens on, children |
 | `why file <path>` | where a file comes from and what uses it: owner, package or installed program, signature, **where it was downloaded from** (Windows), processes running or loading it, services, cron jobs and startup entries that name it. Also finds files deleted but still held open |
 | `why service <name>` | why a service is running: state, how it is enabled, who wants it, what it needs, the unit/command, its main process and ports |

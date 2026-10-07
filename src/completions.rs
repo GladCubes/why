@@ -23,6 +23,7 @@ complete -c why -n '__fish_seen_subcommand_from port' -a 'list tcp udp' -d 'List
 complete -c why -n '__fish_seen_subcommand_from port' -a '(why __complete port)'
 complete -c why -n '__fish_seen_subcommand_from env' -a 'list' -d 'List every variable'
 complete -c why -n '__fish_seen_subcommand_from env' -a '(why __complete env)'
+complete -c why -n '__fish_seen_subcommand_from process service package' -a 'list' -d 'List them all'
 complete -c why -n '__fish_seen_subcommand_from process' -a '(why __complete process)'
 complete -c why -n '__fish_seen_subcommand_from service' -a '(why __complete service)'
 complete -c why -n '__fish_seen_subcommand_from package' -a '(why __complete package)'
@@ -39,7 +40,7 @@ const BASH: &str = r#"_why() {
     case ${COMP_WORDS[1]} in
       port) COMPREPLY=($(compgen -W "list tcp udp $(why __complete port | cut -f1)" -- "$cur")) ;;
       env) COMPREPLY=($(compgen -W "list $(why __complete env | cut -f1)" -- "$cur")) ;;
-      process|service|package) COMPREPLY=($(compgen -W "$(why __complete "${COMP_WORDS[1]}" | cut -f1)" -- "$cur")) ;;
+      process|service|package) COMPREPLY=($(compgen -W "list $(why __complete "${COMP_WORDS[1]}" | cut -f1)" -- "$cur")) ;;
       file|compare) COMPREPLY=($(compgen -f -- "$cur")) ;;
       completions) COMPREPLY=($(compgen -W "fish bash zsh" -- "$cur")) ;;
     esac
@@ -56,7 +57,7 @@ _why() {
     case $words[2] in
       port) compadd list tcp udp ${(f)"$(why __complete port | cut -f1)"} ;;
       env) compadd list ${(f)"$(why __complete env | cut -f1)"} ;;
-      process|service|package) compadd ${(f)"$(why __complete $words[2] | cut -f1)"} ;;
+      process|service|package) compadd list ${(f)"$(why __complete $words[2] | cut -f1)"} ;;
       file|compare) _files ;;
       completions) compadd fish bash zsh ;;
     esac

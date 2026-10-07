@@ -152,3 +152,17 @@ mod tests {
         assert_eq!(names(Some("glibc>=2.40  zlib".into())), vec!["glibc", "zlib"]);
     }
 }
+
+/// `why package list`: every installed package with its version.
+pub fn list() -> String {
+    let mut v = pkg::installed();
+    v.sort();
+    if v.is_empty() {
+        return "no known system package manager (dpkg, pacman, rpm, apk) on this machine\n".into();
+    }
+    let mut out = format!("{:<44} {}\n", "PACKAGE", "VERSION");
+    for (n, ver) in v {
+        out.push_str(&format!("{:<44} {ver}\n", short(&n, 43)));
+    }
+    out
+}

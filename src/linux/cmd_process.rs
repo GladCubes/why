@@ -84,3 +84,16 @@ pub fn complete() -> String {
     v.dedup();
     v.iter().map(|n| format!("{n}\n")).collect()
 }
+
+/// `why process list`: every readable process with its pid.
+pub fn list() -> String {
+    let mut all = process::all();
+    all.sort_by_key(|p| p.pid);
+    let mut out = format!("{:<8} {:<8} {:<14} {:<12} {:<22} {}\n", "PID", "PPID", "USER", "RUNNING", "NAME", "COMMAND");
+    for p in all {
+        let age = p.started.map(|s| ago(now().saturating_sub(s))).unwrap_or_default();
+        let cmd = if p.cmdline.is_empty() { format!("[{}]", p.name) } else { short(&p.cmdline.join(" "), 70) };
+        out.push_str(&format!("{:<8} {:<8} {:<14} {:<12} {:<22} {cmd}\n", p.pid, p.ppid, short(&p.user, 13), age, short(&p.name, 21)));
+    }
+    out
+}

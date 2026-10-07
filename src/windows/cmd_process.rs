@@ -72,3 +72,15 @@ pub fn complete() -> String {
     v.dedup();
     v.iter().map(|n| format!("{n}\n")).collect()
 }
+
+/// `why process list`
+pub fn list() -> String {
+    let mut all = proc::all();
+    all.sort_by_key(|p| p.pid);
+    let mut out = format!("{:<8} {:<8} {:<12} {:<28} {}\n", "PID", "PPID", "RUNNING", "NAME", "COMMAND");
+    for p in all {
+        let age = p.started.map(|s| ago(now().saturating_sub(s))).unwrap_or_default();
+        out.push_str(&format!("{:<8} {:<8} {:<12} {:<28} {}\n", p.pid, p.ppid, age, crate::util::short(&p.name, 27), crate::util::short(&p.cmdline.join(" "), 70)));
+    }
+    out
+}
