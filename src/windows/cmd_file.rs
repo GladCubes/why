@@ -3,7 +3,7 @@ use super::describe;
 use super::ps::{ps, q, rows};
 use crate::graph::Node;
 use crate::proc;
-use crate::util::{short};
+use crate::util::short;
 use std::path::Path;
 
 pub fn explain(arg: &str) -> Node {
@@ -18,7 +18,7 @@ pub fn explain(arg: &str) -> Node {
     // owner, dates, size
     let info = ps(&format!(r#"$f=Get-Item -LiteralPath {p} -Force; $o=(Get-Acl -LiteralPath {p}).Owner; "info`t$o`t$($f.Length)`t$($f.CreationTimeUtc.ToString('yyyy-MM-dd HH:mm'))`t$($f.LastWriteTimeUtc.ToString('yyyy-MM-dd HH:mm'))`t$($f.Attributes)""#)).unwrap_or_default();
     if let Some(r) = rows(&info).into_iter().find(|r| r[0] == "info" && r.len() >= 6) {
-        root.add(Node::new(format!("owner {}, {} bytes, attributes {}", r[1], r[2], r[5])).proof("Get-Acl / Get-Item"));
+        root.add(Node::new(if is_dir { format!("owner {}, attributes {}", r[1], r[5]) } else { format!("owner {}, {} bytes, attributes {}", r[1], r[2], r[5]) }).proof("Get-Acl / Get-Item"));
         root.add(Node::new(format!("created {} UTC, modified {} UTC", r[3], r[4])).proof("file system timestamps"));
     }
     if is_dir {
@@ -47,8 +47,11 @@ pub fn explain(arg: &str) -> Node {
 
 /// The installed program or app package whose folder holds the file.
 fn belongs_to(full: &str) -> Vec<Node> {
+    if full.to_lowercase().starts_with("c:\\windows\\") {
+        return vec![Node::new("part of Windows itself (it lives in the Windows folder)").probable().proof("location")];
+    }
     let out = ps(&format!(r#"$p={}; $keys='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-Get-ItemProperty $keys | ? {{ $_.InstallLocation -and $p.StartsWith(($_.InstallLocation.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) }} | % {{ "prog`t$($_.DisplayName)`t$($_.DisplayVersion)`t$($_.Publisher)`t$($_.InstallDate)" }}
+Get-ItemProperty $keys | ? {{ $_.DisplayName -and $_.InstallLocation -and $p.StartsWith(($_.InstallLocation.TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase) }} | % {{ "prog`t$($_.DisplayName)`t$($_.DisplayVersion)`t$($_.Publisher)`t$($_.InstallDate)" }}
 Get-AppxPackage | ? {{ $_.InstallLocation -and $p.StartsWith($_.InstallLocation,[StringComparison]::OrdinalIgnoreCase) }} | % {{ "appx`t$($_.Name)`t$($_.Version)`t$($_.Publisher)`t" }}"#, q(full))).unwrap_or_default();
     let rs = rows(&out);
     if rs.is_empty() {
@@ -67,7 +70,8 @@ fn users(full: &str) -> Vec<Node> {
         out.push(Node::new(format!("being run by: {}", running.join(", "))).proof("WMI Win32_Process.ExecutablePath"));
     }
     let low = full.to_lowercase();
-    if [".dll", ".ocx", ".sys", ".exe"].iter().any(|e| low.ends_with(e)) {
+    // a running .exe is already covered above; scanning every process's modules is slow, so only for libraries
+    if [".dll", ".ocx", ".sys"].iter().any(|e| low.ends_with(e)) {
         let loaded = ps(&format!(r#"$p={}; Get-Process | % {{ $n=$_.ProcessName; $i=$_.Id; try {{ if ($_.Modules | ? {{ $_.FileName -eq $p }}) {{ "$n ($i)" }} }} catch {{}} }}"#, q(full))).unwrap_or_default();
         let l: Vec<&str> = loaded.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
         if !l.is_empty() {

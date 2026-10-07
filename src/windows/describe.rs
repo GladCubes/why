@@ -10,7 +10,11 @@ use std::path::PathBuf;
 pub fn details(p: &Proc, port: Option<u16>) -> Vec<Node> {
     let mut out = vec![];
     let cmd = p.cmdline.join(" ");
-    let mut c = Node::new(format!("command: {}", short(&cmd, 140))).proof("WMI Win32_Process.CommandLine");
+    let mut c = if cmd.is_empty() {
+        Node::new("command: not readable (protected process: an administrator terminal sees it)").unknown()
+    } else {
+        Node::new(format!("command: {}", short(&cmd, 140))).proof("WMI Win32_Process.CommandLine")
+    };
     if let Some(port) = port {
         if cmd.split_whitespace().any(|a| crate::util::has_token(a, &port.to_string())) {
             c.add(Node::new(format!("port {port} appears in the command")).probable());

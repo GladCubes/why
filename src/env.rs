@@ -66,6 +66,16 @@ fn secret(name: &str) -> bool {
     ["KEY", "TOKEN", "SECRET", "PASS", "PWD", "AUTH", "SALT", "PRIVATE", "CRED", "SIGN"].iter().any(|k| n.contains(k))
 }
 
+/// For a file the user pointed at, any variable name can appear, so values that look like credentials are hidden too.
+fn show_file(name: &str, v: &str) -> String {
+    let url_or_path = v.contains("://") || v.starts_with('/') || v.starts_with('.') || v.chars().nth(1) == Some(':');
+    let credential_like = v.chars().count() >= 12 && v.chars().any(|c| c.is_ascii_digit()) && v.chars().any(|c| c.is_ascii_uppercase()) && v.chars().any(|c| !c.is_ascii_alphanumeric() && c != ' ');
+    if !url_or_path && credential_like && !secret(name) {
+        return format!("{}… ({} characters, hidden: looks like a credential)", v.chars().take(2).collect::<String>(), v.chars().count());
+    }
+    show(name, v)
+}
+
 /// A value that can be compared across machines without leaking it: secrets become a short hash of themselves.
 pub fn comparable(name: &str, v: &str) -> String {
     if !secret(name) {
@@ -225,7 +235,7 @@ pub fn explain(name: &str) -> Node {
     let has_extra = !extra.is_empty();
     root.children.extend(extra);
     if defs.is_empty() && !has_extra {
-        root.add(Node::new("no definition found in the files checked").unknown().proof("shell files, /etc, ~/.config/fish, .env and compose from here up to home"));
+        root.add(Node::new("no definition found in the files checked").unknown().proof("shell startup files, system environment files, and .env / compose files near here or on this machine"));
         if current.is_some() {
             root.add(Node::new("yet the variable exists: it comes from a program that started the shell (terminal, graphical session, systemd --user) or from a manual `export`").probable());
         }
@@ -251,7 +261,7 @@ pub fn explain_arg(arg: &str) -> Node {
         Some(n) => match defs.iter().find(|d| d.0 == n) {
             Some((_, name, value)) => {
                 let mut tree = explain(name);
-                tree.children.insert(0, Node::new(format!("asked about {path}:{n}, which defines {name} = {}", show(name, value))).proof("line read from the file"));
+                tree.children.insert(0, Node::new(format!("asked about {path}:{n}, which defines {name} = {}", show_file(name, value))).proof("line read from the file"));
                 tree
             }
             None => Node::new(format!("{path}:{n} does not define a variable")).unknown().proof(short(text.lines().nth(n - 1).unwrap_or("(no such line)").trim(), 80)),
@@ -259,7 +269,7 @@ pub fn explain_arg(arg: &str) -> Node {
         None => {
             let mut root = Node::new(format!("FILE {path}")).proof(format!("{} variables defined", defs.len()));
             for (i, name, value) in defs {
-                root.add(Node::new(format!("line {i}: {name} = {}", show(&name, &value))).proof("read from the file"));
+                root.add(Node::new(format!("line {i}: {name} = {}", show_file(&name, &value))).proof("read from the file"));
             }
             root
         }
@@ -269,7 +279,7 @@ pub fn explain_arg(arg: &str) -> Node {
 /// name → (current value if set, where it appears)
 fn all_names() -> BTreeMap<String, (Option<String>, Vec<String>)> {
     let mut m: BTreeMap<String, (Option<String>, Vec<String>)> = BTreeMap::new();
-    for (k, v) in std::env::vars() {
+    for (k, v) in std::env::vars().filter(|(k, _)| !k.starts_with('=')) {
         m.entry(k).or_default().0 = Some(v);
     }
     for d in definitions(None, false) {
@@ -367,6 +377,14 @@ mod tests {
         assert_eq!(a, comparable("API_TOKEN", "abc"));
         assert!(!a.contains("abc"));
         assert_eq!(comparable("PORT", "80"), "80");
+    }
+
+    #[test]
+    fn hides_credential_looking_values_in_files() {
+        assert!(show_file("gmail", "nicola@x.com / Vr3ed!0p9Lm").contains("hidden"));
+        assert_eq!(show_file("PORT", "3000"), "3000");
+        assert_eq!(show_file("URL", "http://localhost:3000/Api1"), "http://localhost:3000/Api1");
+        assert_eq!(show_file("DIR", r"C:\Users\nick\App2"), r"C:\Users\nick\App2");
     }
 
     #[test]

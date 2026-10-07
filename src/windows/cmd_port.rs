@@ -19,8 +19,9 @@ pub fn parse_netstat(text: &str) -> Vec<Listener> {
     let mut out = vec![];
     for l in text.lines() {
         let f: Vec<&str> = l.split_whitespace().collect();
+        // the state column can be several words in other languages ("IN ASCOLTO"), so the pid is simply the last column
         let (proto, local, pid) = match (f.first().map(|s| s.to_ascii_uppercase()).as_deref(), f.len()) {
-            (Some("TCP"), 5) if f[2].ends_with(":0") && (f[2].starts_with("0.0.0.0") || f[2].starts_with("[::]")) => ("tcp", f[1], f[4]),
+            (Some("TCP"), n) if n >= 5 && f[2].ends_with(":0") && (f[2].starts_with("0.0.0.0") || f[2].starts_with("[::]")) => ("tcp", f[1], f[n - 1]),
             (Some("UDP"), 4) => ("udp", f[1], f[3]),
             _ => continue,
         };

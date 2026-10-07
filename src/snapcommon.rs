@@ -20,6 +20,9 @@ pub const NOISE_PREFIX: &[&str] = &["INVOCATION_ID", "JOURNAL_STREAM", "MANAGERP
 pub fn env_items(s: &mut Snapshot) {
     for (k, v) in std::env::vars() {
         let up = k.to_ascii_uppercase();
+        if k.starts_with('=') {
+            continue;
+        }
         if NOISE.contains(&up.as_str()) || NOISE_PREFIX.iter().any(|p| up.starts_with(p)) {
             continue;
         }

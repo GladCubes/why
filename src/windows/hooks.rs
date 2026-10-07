@@ -43,8 +43,10 @@ pub fn extra_env(name: &str) -> Vec<Node> {
     let mut g = Node::new("Windows environment (registry)").proof("a process starts with the machine values, then the user values on top (PATH is joined)");
     for r in rows(&out).iter().filter(|r| r.len() >= 2) {
         let (key, label) = if r[0] == "user" { (r"HKCU\Environment", "user") } else { (r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "machine") };
-        let same = current.as_deref() == Some(r[1].as_str());
-        let mut x = Node::new(format!("{label} value = {}{}", crate::env::show(name, &r[1]), if same { "   ← same as the current environment" } else { "" })).proof(key);
+        // PATH-like variables are joined from both layers: the current value just has to contain each part
+        let joined = name.eq_ignore_ascii_case("path") || name.eq_ignore_ascii_case("pathext") || name.eq_ignore_ascii_case("psmodulepath");
+        let same = current.as_deref() == Some(r[1].as_str()) || (joined && current.as_deref().is_some_and(|c| c.to_lowercase().contains(&r[1].trim_end_matches(';').to_lowercase())));
+        let mut x = Node::new(format!("{label} value = {}{}", crate::env::show(name, &r[1]), if same { if joined { "   ← included in the current value" } else { "   ← same as the current environment" } } else { "" })).proof(key);
         if !same && current.is_some() {
             x.add(Node::new("different from the current environment: the program was started before the change, or something overrides it").probable());
         }

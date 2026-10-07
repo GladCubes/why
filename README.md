@@ -18,14 +18,19 @@ PORT 8080
 
 | command | what it rebuilds |
 |---|---|
-| `why port <N>` | who listens, command and directory, who started it (tmux, systemd, container), the unit and the script it launches, config files naming the port, nft rules, ports published by Docker/Podman, and tunnels in front (ssh `-L/-R/-D`, cloudflared ingress rules, WireGuard, ngrok/frp/chisel, tailscale serve) |
-| `why port udp 7777` | only that protocol; `tcp 7777`, `7777/udp`, `udp:7777` all work |
+| `why port <N>` | who listens, how it was started (service, container, tmux, terminal), the config that names the port, the firewall rules, port forwards and tunnels in front of it. `why port udp 7777`, `7777/tcp`, `tcp:7777` filter by protocol |
 | `why port list [tcp\|udp]` | every listening port with its process |
-| `why env <NAME>` | the current value, every definition found and who probably loads each file (a running program started from that directory, or a systemd unit pointing at it): shell files (bash, zsh, fish), `/etc`, `environment.d`, `.env` and `docker-compose` in the directories above yours |
-| `why env <file>[:line]` | the variables a file defines (`why env .env`), or the variable on a given line and everywhere else it is set (`why env /var/www/app/.env:38`) |
-| `why env list` | the variables defined in your project (`.env`, `docker-compose`, two levels down and up to home), with where, and a flag when files disagree. If nothing is near you, it searches the whole machine: `/opt`, `/srv`, `/var/www`, home directories, running services, systemd units and their `EnvironmentFile=` |
+| `why process <pid\|name>` | why a process exists: command, since when, executable (package or publisher, signature), who started it, what manages it, what it listens on, children |
+| `why file <path>` | where a file comes from and what uses it: owner, package or installed program, signature, **where it was downloaded from** (Windows), processes running or loading it, services, cron jobs and startup entries that name it. Also finds files deleted but still held open |
+| `why service <name>` | why a service is running: state, how it is enabled, who wants it, what it needs, the unit/command, its main process and ports |
+| `why package <name>` | why a package is installed: on purpose or as a dependency, who needs it, when and by which command; inside a project, why it is a dependency (npm, cargo, pip, dotnet) |
+| `why env <NAME>` | the current value, every definition found and who probably loads each file (a running program started from that directory, or a systemd unit pointing at it). On Windows also the user and machine registry layers |
+| `why env <file>[:line]` | the variables a file defines, or the variable on a given line and everywhere else it is set |
+| `why env list` | the variables defined in your project (`.env`, `docker-compose`), with where, and a flag when files disagree. If nothing is near you, it searches the whole machine |
 | `why env list all` | the same plus the shell and system environment |
-| `why completions <fish\|bash\|zsh>` | tab completion; `why env <TAB>` lists the variables, `why port <TAB>` the listening ports |
+| `why snapshot` | a picture of this machine as text: tools and versions, environment, ports, services, containers, packages |
+| `why compare <A> <B>` | what differs between two machines. `A` and `B` can be a snapshot file, `local`, or a host reachable over ssh that also has `why` (`why compare local web01`). Secrets are compared by fingerprint, never shown |
+| `why completions <fish\|bash\|zsh>` | tab completion: `why port <TAB>` lists listening ports, `why service <TAB>` services, `why package <TAB>` installed packages |
 
 ```
 why completions fish > ~/.config/fish/completions/why.fish
@@ -46,28 +51,32 @@ Tunnels: it sees what runs *on this machine*. A tunnel on another machine (a VPS
 
 ## What it understands
 
-| area | supported |
-|---|---|
-| init / service manager | systemd (units, drop-ins, `EnvironmentFile=`, the script `ExecStart=` launches); on OpenRC, runit, s6 it says it can't tell instead of guessing |
-| Kubernetes | Services that expose the port (`kubectl get svc`, if `kubectl` can reach a cluster); pod and runtime names from the cgroup |
-| containers | Docker, Podman, containerd, CRI-O, Kubernetes pods, LXC, Incus/LXD (including their port proxies), cgroup v1 and v2 |
-| firewall | nft, iptables, ip6tables (`ufw` and `firewalld` show up as the rules they generate) |
-| tunnels | ssh `-L/-R/-D`, cloudflared (config file), WireGuard, ngrok, frp, chisel, bore, rathole, zrok, tailscale serve |
-| variables | bash, zsh, fish, `/etc/environment(.d)`, `.env*`, docker-compose, systemd `Environment=` |
+| area | Linux | Windows |
+|---|---|---|
+| processes and ports | `/proc`, cgroups v1 and v2 | WMI and `netstat -ano` (any Windows language) |
+| service manager | systemd (units, drop-ins, `EnvironmentFile=`, launched scripts); on OpenRC, runit, s6 it says it can't tell | Windows services (account, start mode, dependencies, triggers), `svchost` groups |
+| started at boot by | units, cron, tmux | services, Run keys, scheduled tasks, Startup folders |
+| containers | Docker, Podman, containerd, CRI-O, Kubernetes pods, LXC, Incus/LXD (including their port proxies) | Docker Desktop (`docker ps`), WSL relay noted |
+| kubernetes | Services that expose a port (needs `kubectl` with a cluster) | same |
+| firewall and forwards | nft, iptables, ip6tables | Windows Firewall rules, `netsh portproxy` |
+| tunnels | ssh `-L/-R/-D`, cloudflared, WireGuard, ngrok, frp, chisel, bore, rathole, zrok, tailscale serve | same except WireGuard |
+| packages | dpkg, pacman, rpm, apk | installed programs (registry), Store apps, Chocolatey |
+| project dependencies | npm, cargo, pip, dotnet | same |
+| variables | bash, zsh, fish, `/etc/environment(.d)`, `.env*`, docker-compose, systemd `Environment=` | user and machine registry, PowerShell profiles, `.env*`, docker-compose |
+| files | package owner, mounts, open/mapped by processes, units and cron naming it | signature, version info, Mark-of-the-Web download URL, installed program, services and tasks naming it |
 
-Tested on Arch Linux and Ubuntu 24.04. It reads only what the kernel and standard config locations expose, so on a very unusual setup the answer is "I don't know" (`?`), not a wrong answer.
+Tested on Arch Linux, Ubuntu 24.04 and Windows 10 22H2 (run from a normal user: some details, such as the command line of protected system processes, need an administrator terminal and are reported as `?` otherwise). It reads only what the system and the standard config locations expose, so on a very unusual setup the answer is "I don't know" (`?`), not a wrong answer.
 
-The Kubernetes Service lookup is only tested against sample `kubectl` output, not a live cluster yet.
-
-Not covered yet: listeners inside other network namespaces (a container's private ports that are not published), macOS, Windows.
+The Kubernetes Service lookup is only tested against sample `kubectl` output, not a live cluster yet. macOS is not supported.
 
 ## Status
 
-Linux (read from `/proc`). Windows, `why package` and `why compare` are next. No external dependencies.
+Linux and Windows. No external dependencies (on Windows it calls PowerShell, `netstat` and `netsh`, which every supported version has).
 
 ```
 cargo build --release                                    # normal binary
 cargo build --release --target x86_64-unknown-linux-musl # static, runs on any distro
+cargo xwin build --release --target x86_64-pc-windows-msvc # Windows .exe, cross-compiled from Linux
 ```
 
 MIT license.

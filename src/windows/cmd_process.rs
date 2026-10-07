@@ -19,7 +19,7 @@ pub fn explain(arg: &str) -> Node {
     let found = find(arg);
     match found.as_slice() {
         [] => Node::new(format!("PROCESS {arg}: no running process matches")).unknown().proof("looked at the name of every process WMI lists"),
-        [one] => tree(one),
+        [one] => tree(&super::process::read(one.pid).unwrap_or_else(|| one.clone())),
         many => {
             let mut root = Node::new(format!("PROCESS {arg}: {} processes match", many.len())).proof("process name");
             for p in many.iter().take(5) {
